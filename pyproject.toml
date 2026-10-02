@@ -1,0 +1,56 @@
+[project]
+name = "chess-analysis-engine"
+version = "0.1.0"
+description = "A chess game review engine that explains *why* moves are good or bad, so you actually learn from your games."
+readme = "README.md"
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
+requires-python = ">=3.12"
+authors = [{ name = "Muhammad Athar" }]
+dependencies = [
+    "chess>=1.11.2",
+    "fastapi>=0.142",
+    "uvicorn[standard]>=0.54",
+    "pydantic>=2.13",
+    "httpx>=0.28",
+]
+
+[project.optional-dependencies]
+# Optional "coach voice": Claude rewrites verified facts as prose.
+coach = ["anthropic>=1.11"]
+
+[project.scripts]
+chess-analysis = "chess_analysis_engine.cli:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "ruff>=0.13",
+    "zstandard>=0.23",
+]
+
+[build-system]
+requires = ["uv_build>=0.10,<0.11"]
+build-backend = "uv_build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "engine: needs a Stockfish binary (run with `pytest -m engine`)",
+    "network: talks to external APIs (run with `pytest -m network`)",
+]
+addopts = "-m 'not engine and not network'"
+filterwarnings = [
+    "ignore:.*DefaultEventLoopPolicy.*:DeprecationWarning",
+    "ignore:.*iscoroutinefunction.*:DeprecationWarning",
+    "ignore:.*starlette.testclient.*",
+]
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+src = ["src", "tests", "scripts"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]
+ignore = ["RUF001", "RUF002", "RUF003"]  # chess text legitimately uses unicode (…, ×, →)

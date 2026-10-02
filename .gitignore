@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+build/
+dist/
+
+# Engine binaries fetched by scripts/get_stockfish.sh
+bin/
+
+# Local app data / large downloads
+.data/
+data/puzzles/*.zst
+data/puzzles/*.csv
+
+# Web
+web/node_modules/
+web/dist/
+web/.vite/
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store
+web/openapi.json
