@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { LineRef, MoveReview, Narration, Side } from "../api/client";
 import { moveLabel } from "../lib/chess";
 import { narrate, useCoachStatus, useCoachVoice } from "../lib/coach";
@@ -13,6 +13,8 @@ type Props = {
   onShowLine: (line: LineRef, title: string) => void;
   /** Go back to the position before this move and try something else. */
   onTryAnother?: () => void;
+  /** Link to this position's drill, for your own mistakes. */
+  drillHref?: string;
 };
 
 const DIFFICULTY: Record<string, string> = {
@@ -37,7 +39,7 @@ function chips(move: MoveReview): string[] {
 }
 
 /** One move, explained: what happened, what was better, and the lesson to keep. */
-export function CoachPanel({ move, userColor, kicker, onShowLine, onTryAnother }: Props) {
+export function CoachPanel({ move, userColor, kicker, onShowLine, onTryAnother, drillHref }: Props) {
   const status = useCoachStatus();
   const [voice, setVoice] = useCoachVoice();
   const [askedKey, setAskedKey] = useState<string | null>(null);
@@ -70,6 +72,12 @@ export function CoachPanel({ move, userColor, kicker, onShowLine, onTryAnother }
       .catch((e: unknown) => setResult({ key: moveKey, error: e instanceof Error ? e.message : String(e) }));
   };
 
+  // A new move starts at the top of the explanation (it scrolls inside the card on wide screens).
+  const body = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (body.current) body.current.scrollTop = 0;
+  }, [moveKey]);
+
   const perspective: Side = userColor ?? move.color;
   const whose = userColor ? "Your" : `${perspective === "white" ? "White" : "Black"}'s`;
   const before = chancesFor(move.win_before, perspective);
@@ -87,93 +95,105 @@ export function CoachPanel({ move, userColor, kicker, onShowLine, onTryAnother }
 
   return (
     <div className="card coach">
-      {kicker && <div className="muted small">{kicker}</div>}
-      <div className="move-head">
-        <h2>{label}</h2>
-        <Badge value={move.classification} />
-        {ready && (
-          <button
-            className="voice-toggle"
-            aria-pressed={voice}
-            title="Retell this move in a coach's words with Claude, checked against the verified facts"
-            onClick={() => setVoice(!voice)}
-          >
-            ✦ Coach voice
-          </button>
-        )}
-      </div>
-      <div className="chances">
-        {whose} winning chances {pct(before)} → {pct(after)}
-        {move.clock?.spent !== null && move.clock?.spent !== undefined && ` · played in ${Math.round(move.clock.spent)}s`}
-      </div>
-      {explanation && (
-        <div className="headline">
-          {explanation.headline}
-          {coached && (
-            <span className="ai-tag" title="Written by Claude from the facts below, and checked against them">
-              ✦ AI
-            </span>
-          )}
-        </div>
-      )}
-      {voice && ready && wanted && !current && <div className="muted small">✦ The coach is writing…</div>}
-      {voice && ready && !wanted && (
-        <button className="linkish" onClick={() => setAskedKey(moveKey)}>
-          ✦ Ask the coach about this move
-        </button>
-      )}
-      {voice && current?.error && <div className="muted small">✦ The coach is unavailable: {current.error}</div>}
-      {fallback && (
-        <div className="muted small">
-          ✦ The coach's wording didn't match the verified facts, so this is the standard explanation.{" "}
-          <button className="linkish small" onClick={askAgain}>
-            Ask again
-          </button>
-          {fallback.problems && fallback.problems.length > 0 && (
-            <details>
-              <summary>What didn't match</summary>
-              <ul>
-                {fallback.problems.map((problem) => (
-                  <li key={problem}>{problem}</li>
-                ))}
-              </ul>
-            </details>
-          )}
-        </div>
-      )}
-      {(explanation?.sections ?? []).map((section, i) => (
-        <section key={i}>
-          <h4>{section.title}</h4>
-          <p>{section.text}</p>
-          {section.line && section.line.uci.length > 0 && (
-            <button className="linkish" onClick={() => onShowLine(section.line!, section.title)}>
-              ▶ Show this line on the board
+      <div className="coach-head">
+        {kicker && <div className="muted small">{kicker}</div>}
+        <div className="move-head">
+          <h2>{label}</h2>
+          <Badge value={move.classification} />
+          {ready && (
+            <button
+              className="voice-toggle"
+              aria-pressed={voice}
+              title="Retell this move in a coach's words with Claude, checked against the verified facts"
+              onClick={() => setVoice(!voice)}
+            >
+              ✦ Coach voice
             </button>
           )}
-        </section>
-      ))}
-      {explanation?.lesson && (
-        <div className="lesson">
-          <strong>Lesson: </strong>
-          {explanation.lesson}
         </div>
-      )}
-      {bad && move.difficulty && <p className="muted small">{DIFFICULTY[move.difficulty]}</p>}
-      {chips(move).length > 0 && (
-        <div className="chips">
-          {chips(move).map((c) => (
-            <span key={c} className="chip">
-              {c}
-            </span>
-          ))}
+        <div className="chances">
+          {whose} winning chances {pct(before)} → {pct(after)}
+          {move.clock?.spent !== null && move.clock?.spent !== undefined && ` · played in ${Math.round(move.clock.spent)}s`}
         </div>
-      )}
-      <div className="row actions">
-        {bestLine && (
-          <button onClick={() => onShowLine(bestLine, `Engine's best: ${moveLabel(move.move_number, move.color, best ?? "")}`)}>
-            Show best line
+      </div>
+      <div className="coach-body" ref={body}>
+        {explanation && (
+          <div className="headline">
+            {explanation.headline}
+            {coached && (
+              <span className="ai-tag" title="Written by Claude from the facts below, and checked against them">
+                ✦ AI
+              </span>
+            )}
+          </div>
+        )}
+        {voice && ready && wanted && !current && <div className="muted small">✦ The coach is writing…</div>}
+        {voice && ready && !wanted && (
+          <button className="linkish" onClick={() => setAskedKey(moveKey)}>
+            ✦ Ask the coach about this move
           </button>
         )}
+        {voice && current?.error && <div className="muted small">✦ The coach is unavailable: {current.error}</div>}
+        {fallback && (
+          <div className="muted small">
+            ✦ The coach's wording didn't match the verified facts, so this is the standard explanation.{" "}
+            <button className="linkish small" onClick={askAgain}>
+              Ask again
+            </button>
+            {fallback.problems && fallback.problems.length > 0 && (
+              <details>
+                <summary>What didn't match</summary>
+                <ul>
+                  {fallback.problems.map((problem) => (
+                    <li key={problem}>{problem}</li>
+                  ))}
+                </ul>
+              </details>
+            )}
+          </div>
+        )}
+        {(explanation?.sections ?? []).map((section, i) => (
+          <section key={i}>
+            <h4>{section.title}</h4>
+            <p>{section.text}</p>
+            {section.line && section.line.uci.length > 0 && (
+              <button className="linkish" onClick={() => onShowLine(section.line!, section.title)}>
+                ▶ Show this line on the board
+              </button>
+            )}
+          </section>
+        ))}
+        {explanation?.lesson && (
+          <div className="lesson">
+            <strong>Lesson: </strong>
+            {explanation.lesson}
+          </div>
+        )}
+        {bad && move.difficulty && <p className="muted small">{DIFFICULTY[move.difficulty]}</p>}
+        {chips(move).length > 0 && (
+          <div className="chips">
+            {chips(move).map((c) => (
+              <span key={c} className="chip">
+                {c}
+              </span>
+            ))}
+          </div>
+        )}
+        {drillHref && (
+          <p className="small">
+            <a href={drillHref}>Practice this position as a drill →</a>
+          </p>
+        )}
+      </div>
+      {/* Same buttons in the same places on every move: unavailable ones are disabled, not removed. */}
+      <div className="row actions">
+        <button
+          disabled={!bestLine}
+          title={bestLine ? undefined : "This was the engine's move"}
+          onClick={() => bestLine && onShowLine(bestLine, `Engine's best: ${moveLabel(move.move_number, move.color, best ?? "")}`)}
+        >
+          Show best line
+        </button>
         {onTryAnother && <button onClick={onTryAnother}>Try a different move here</button>}
       </div>
     </div>

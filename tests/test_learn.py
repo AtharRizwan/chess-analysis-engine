@@ -7,13 +7,22 @@ from fastapi.testclient import TestClient
 
 from chess_analysis_engine.api.app import create_app
 from chess_analysis_engine.api.state import AppState
-from chess_analysis_engine.learn.drills import INTERVAL_DAYS, accepted_moves, drills_from_review, schedule
+from chess_analysis_engine.learn.drills import (
+    INTERVAL_DAYS,
+    accepted_moves,
+    drills_from_review,
+    grade,
+    schedule,
+    why_bad,
+)
 from chess_analysis_engine.learn.insights import aggregate, index_rows, review_stats
 from chess_analysis_engine.models import (
     EngineLine,
     Explanation,
+    ExplanationSection,
     Fact,
     GameReview,
+    LineRef,
     MoveReview,
     PlayerInfo,
     Score,
@@ -76,6 +85,54 @@ def test_leitner_schedule():
     assert schedule(4, False, now) == (1, datetime(2026, 10, 1 + INTERVAL_DAYS[1], tzinfo=UTC).isoformat())
 
 
+def test_why_bad_explains_the_played_move_without_the_answer():
+    after_f6 = "rnbqkbnr/ppppp1pp/5p2/8/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2"
+    punish = LineRef(start_fen=after_f6, uci=["d1h5"], san=["Qh5+"])
+    blunder = (
+        review()
+        .moves[1]
+        .model_copy(
+            update={
+                "fen_after": after_f6,
+                "refutation": EngineLine(uci=["d1h5"], san=["Qh5+"], score=Score(cp=300), depth=10),
+                "explanation": Explanation(
+                    headline="Weakens your king",
+                    sections=[
+                        ExplanationSection(
+                            title="What went wrong", text="It opens the e8-h5 diagonal.", line=punish
+                        ),
+                        ExplanationSection(title="Better was 1...Nf6", text="It develops."),
+                    ],
+                ),
+            }
+        )
+    )
+    text, line = why_bad(blunder)
+    # A reason without moves gets the continuation, so you can see how it goes wrong.
+    assert text == "It opens the e8-h5 diagonal. After 1...f6, best play continues 2. Qh5+."
+    # The line starts from the drill position, with the move you played first.
+    assert line.start_fen == blunder.fen_before and line.san == ["f6", "Qh5+"]
+
+    # A miss: its explanation is all about the better move, so describe what happened instead.
+    miss = blunder.model_copy(deep=True)
+    miss.explanation.headline = "Misses a fork"
+    miss.explanation.sections = miss.explanation.sections[1:]
+    text, line = why_bad(miss)
+    assert text == "It misses a fork. After 1...f6, best play continues 2. Qh5+."
+    assert "Nf6" not in text and line.san == ["f6", "Qh5+"]
+
+
+def test_only_due_cards_are_graded():
+    now = datetime(2026, 10, 2, 12, tzinfo=UTC)
+    due = {"box": 2, "due_at": "2026-10-02T00:00:00+00:00"}
+    assert grade(due, "solved", now) == {"box": 3, "due_at": "2026-10-09T12:00:00+00:00"}
+    assert grade(due, "wrong", now) == {"box": 1, "due_at": "2026-10-03T12:00:00+00:00"}
+    assert grade(due, "close", now) == {}
+    # After a miss the card is due tomorrow, so solving it now (or practising early) changes nothing.
+    missed = {**due, **grade(due, "wrong", now)}
+    assert grade(missed, "solved", now) == {} and grade(missed, "wrong", now) == {}
+
+
 def test_insights_group_costly_moves_by_cause():
     r = review()
     rows = index_rows(7, r)
@@ -104,9 +161,18 @@ def test_drill_api_round_trip(client, db, fixtures):
     assert client.get("/api/drills/stats").json() == {"due": 1, "total": 1, "boxes": {"1": 1}}
     (card,) = client.get("/api/drills/due").json()
     assert card["hints"] == ["Look for a fork."] and card["focus"] == "g8" and card["color"] == "black"
+    assert card["played_uci"] == "f7f6" and card["classification"] == "blunder" and card["why"]
+
+    assert client.get(f"/api/drills/{card['id']}").json()["played"] == "f6"
+    assert [c["ply"] for c in client.get(f"/api/games/{game_id}/drills").json()] == [2]
+    assert client.get("/api/drills/999").status_code == 404
 
     result = client.post(f"/api/drills/{card['id']}/attempt", json={"move": "g8f6"}).json()
-    assert result["correct"] is True and result["solution"] == "Nf6" and result["card"]["box"] == 2
+    assert result["verdict"] == "solved" and result["correct"] is True
+    assert result["solution"] == "Nf6" and result["card"]["box"] == 2
+    # Not due any more: another solve doesn't move it up again.
+    again = client.post(f"/api/drills/{card['id']}/attempt", json={"move": "g8f6"}).json()
+    assert again["card"]["box"] == 2 and again["card"]["attempts"] == 2
     assert client.get("/api/drills/stats").json()["due"] == 0
     assert client.post(f"/api/drills/{card['id']}/attempt", json={"move": "e1e2"}).status_code == 400
 

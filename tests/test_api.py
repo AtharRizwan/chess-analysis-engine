@@ -25,7 +25,7 @@ def engine_client(db, pool):
 def test_health_and_settings(client):
     assert client.get("/api/health").json()["engine"] is None
     settings = client.get("/api/settings").json()
-    assert settings["preset"] == "standard" and settings["learn_mode"] is True
+    assert settings["preset"] == "standard" and "learn_mode" not in settings
     settings["chesscom_username"] = "AtharxRizwan"
     assert client.put("/api/settings", json=settings).json()["chesscom_username"] == "AtharxRizwan"
     assert client.get("/api/settings").json()["chesscom_username"] == "AtharxRizwan"
@@ -143,6 +143,10 @@ def test_drill_wrong_attempt_is_explained(engine_client, fixtures):
     assert blunder["hints"], "drills carry retry hints"
     # Playing the game's blunder again is wrong, and the answer says why.
     result = engine_client.post(f"/api/drills/{blunder['id']}/attempt", json={"move": "e5f7"}).json()
-    assert result["correct"] is False
+    assert result["verdict"] == "wrong" and result["correct"] is False
     assert result["attempt"]["classification"] in ("mistake", "blunder")
     assert result["card"]["box"] == 1 and result["answer"]["san"] == "Nxf7"
+    # Finding the answer after a miss is "solved", but the card stays in box 1 (it comes back tomorrow).
+    best = result["answer"]["best"]["uci"][0]
+    solved = engine_client.post(f"/api/drills/{blunder['id']}/attempt", json={"move": best}).json()
+    assert solved["verdict"] == "solved" and solved["card"]["box"] == 1

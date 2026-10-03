@@ -73,11 +73,6 @@ export function SettingsPage() {
           <input type="checkbox" checked={settings.tablebase ?? true} onChange={(e) => update({ tablebase: e.target.checked })} />
           Look up endgames with 7 pieces or fewer on lichess's tablebase
         </label>
-        <span>Learn mode</span>
-        <label className="row">
-          <input type="checkbox" checked={settings.learn_mode ?? true} onChange={(e) => update({ learn_mode: e.target.checked })} />
-          Hide the answer on your mistakes until you've tried to find it
-        </label>
         <span>Claude coach</span>
         <div className="stack-tight">
           <label className="row">

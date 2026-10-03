@@ -17,7 +17,6 @@ class Settings(BaseModel):
     preset: PresetName = "standard"
     threats: bool = True  # null-move threat searches ("what did my opponent threaten?")
     tablebase: bool = True  # look up endgames with 7 pieces or fewer online (lichess)
-    learn_mode: bool = True  # hide the answer on your mistakes until you've tried
     coach_enabled: bool = False  # optional Claude narration
     coach_model: str = "claude-opus-5-5"
     coach_effort: Literal["low", "medium", "high"] = "medium"

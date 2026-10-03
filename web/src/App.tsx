@@ -9,7 +9,7 @@ import { SettingsPage } from "./pages/SettingsPage";
 type Route =
   | { page: "games" }
   | { page: "review"; id: number; ply?: number }
-  | { page: "drills"; theme?: string }
+  | { page: "drills"; theme?: string; id?: number }
   | { page: "insights" }
   | { page: "settings" };
 
@@ -19,7 +19,9 @@ function parse(hash: string): Route {
   if (parts[0] === "review" && Number(parts[1])) {
     return { page: "review", id: Number(parts[1]), ply: Number(parts[2]) || undefined };
   }
-  if (parts[0] === "drills") return { page: "drills", theme: new URLSearchParams(query).get("theme") ?? undefined };
+  if (parts[0] === "drills") {
+    return { page: "drills", theme: new URLSearchParams(query).get("theme") ?? undefined, id: Number(parts[1]) || undefined };
+  }
   if (parts[0] === "insights") return { page: "insights" };
   if (parts[0] === "settings") return { page: "settings" };
   return { page: "games" };
@@ -72,7 +74,9 @@ export function App() {
       <main className="page">
         {route.page === "games" && <GamesPage />}
         {route.page === "review" && <ReviewPage key={route.id} gameId={route.id} initialPly={route.ply} />}
-        {route.page === "drills" && <DrillsPage key={route.theme ?? ""} theme={route.theme} />}
+        {route.page === "drills" && (
+          <DrillsPage key={`${route.theme ?? ""}-${route.id ?? ""}`} theme={route.theme} drillId={route.id} />
+        )}
         {route.page === "insights" && <InsightsPage />}
         {route.page === "settings" && <SettingsPage />}
       </main>

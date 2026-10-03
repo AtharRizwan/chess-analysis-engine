@@ -434,6 +434,51 @@ main.page {
 .coach .actions {
   margin-top: 12px;
 }
+
+/* Review page, wide screens: the side panel has a fixed size, so nothing in it moves from move to move.
+   The explanation scrolls inside its card; the card's buttons, the summary row and the move list stay put. */
+@media (min-width: 961px) {
+  .side-panel.fixed {
+    position: sticky;
+    top: 72px; /* below the sticky top bar */
+    height: calc(100vh - 92px);
+    min-height: 560px;
+  }
+  .side-panel.fixed > * {
+    flex: none;
+  }
+  .side-panel.fixed > .panel-slot {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .side-panel.fixed > .panel-slot > .card {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+  }
+  .side-panel.fixed > .panel-slot > .coach {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .side-panel.fixed .coach-body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    margin-right: -10px;
+    padding-right: 10px; /* room for the scrollbar */
+  }
+  .side-panel.fixed .coach .actions {
+    margin-top: 0;
+    padding-top: 12px;
+    border-top: 1px solid var(--grid);
+  }
+  .side-panel.fixed .movelist {
+    max-height: 240px;
+  }
+}
 .voice-toggle {
   margin-left: auto;
   align-self: center;
@@ -535,6 +580,7 @@ main.page {
 }
 
 .movelist {
+  position: relative; /* rows' offsetTop is measured from the list (MoveList keeps the move in view) */
   max-height: 340px;
   overflow-y: auto;
   display: grid;
@@ -706,4 +752,11 @@ main.page {
   display: flex;
   flex-direction: column;
   gap: 4px;
+}
+
+.retry-feedback {
+  min-height: 24px; /* "Checking…" appearing doesn't push the hints around */
+}
+.hint-button {
+  min-width: 132px;
 }

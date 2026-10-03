@@ -20,9 +20,17 @@ function rows(moves: MoveReview[]): Row[] {
 
 /** The game as a table of moves; each move carries its classification. */
 export function MoveList({ moves, ply, onSelect }: Props) {
+  const list = useRef<HTMLDivElement>(null);
   const current = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    current.current?.scrollIntoView({ block: "nearest" });
+    // Scroll the list itself (not the page, which scrollIntoView would also do) to keep the move in view.
+    const box = list.current;
+    const row = current.current;
+    if (!box || !row) return;
+    const top = row.offsetTop; // .movelist is position: relative
+    const bottom = top + row.offsetHeight;
+    if (top < box.scrollTop) box.scrollTop = top;
+    else if (bottom > box.scrollTop + box.clientHeight) box.scrollTop = bottom - box.clientHeight;
   }, [ply]);
 
   const cell = (move: MoveReview | undefined) => {
@@ -45,7 +53,7 @@ export function MoveList({ moves, ply, onSelect }: Props) {
   };
 
   return (
-    <div className="movelist" aria-label="Moves">
+    <div ref={list} className="movelist" aria-label="Moves">
       {rows(moves).map((row, i) => (
         <div key={i} style={{ display: "contents" }}>
           <div className="num">{row.number}.</div>

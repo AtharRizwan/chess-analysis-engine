@@ -17,9 +17,7 @@ import { EvalBar } from "../components/EvalBar";
 import { EvalGraph } from "../components/EvalGraph";
 import { GameSummary } from "../components/GameSummary";
 import { MoveList } from "../components/MoveList";
-import { type RetryFeedback, RetryPanel } from "../components/RetryPanel";
 import { numberLine, play, positionsAlong, squaresOf, uciFromDrag } from "../lib/chess";
-import { LABELS, SERIOUS, SOLVED } from "../lib/format";
 
 type View =
   | { kind: "game" }
@@ -40,28 +38,11 @@ const STAGES: Record<string, string> = {
   facts: "Working out why each move is good or bad",
 };
 
-type Retry = {
-  status: "trying" | "solved" | "revealed";
-  hints: number;
-  attempts: number;
-  feedback: RetryFeedback;
-  found?: MoveReview;
-  error?: string | null;
-};
-const NEW_RETRY: Retry = { status: "trying", hints: 0, attempts: 0, feedback: null };
-
 const notGreen = (annotations: Annotation[] | undefined) => (annotations ?? []).filter((a) => a.brush !== "green");
-
-function foundText(retry: Retry | undefined): string | undefined {
-  if (retry?.status !== "solved" || !retry.found) return undefined;
-  const tries = retry.attempts === 1 ? "first try" : `${retry.attempts} tries`;
-  return `✓ You found ${retry.found.san} (${tries}). Here's what went wrong in the game:`;
-}
 
 export function ReviewPage({ gameId, initialPly }: { gameId: number; initialPly?: number }) {
   const [game, setGame] = useState<GameRow | null>(null);
-  const [learnMode, setLearnMode] = useState(true);
-  const [retries, setRetries] = useState<Record<number, Retry>>({});
+  const [drills, setDrills] = useState<Map<number, number>>(new Map()); // ply -> drill id
   const [review, setReview] = useState<GameReview | null>(null);
   const [job, setJob] = useState<JobStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -105,8 +86,13 @@ export function ReviewPage({ gameId, initialPly }: { gameId: number; initialPly?
   }, [gameId]);
 
   useEffect(() => {
-    api.settings().then((s) => setLearnMode(s.learn_mode ?? true)).catch(() => undefined);
-  }, []);
+    // Your mistakes become drills when the review finishes; link to them from the explanation.
+    if (!review) return;
+    api
+      .gameDrills(gameId)
+      .then((cards) => setDrills(new Map(cards.map((c) => [c.ply, c.id]))))
+      .catch(() => undefined);
+  }, [gameId, review]);
 
   const moves = useMemo(() => review?.moves ?? [], [review]);
 
@@ -154,41 +140,10 @@ export function ReviewPage({ gameId, initialPly }: { gameId: number; initialPly?
     [review, fens, moves, userColor],
   );
 
-  // Learn mode: on your own costly moves, try to find the better move before seeing the answer.
   const current = ply ? moves[ply - 1] : null;
-  const retry = current ? retries[current.ply] ?? NEW_RETRY : null;
-  const retrying =
-    view.kind === "game" &&
-    learnMode &&
-    !!current &&
-    !!userColor &&
-    current.color === userColor &&
-    SERIOUS.has(current.classification) &&
-    retry?.status === "trying";
-  const setRetry = (moveIndex: number, patch: Partial<Retry>) =>
-    setRetries((all) => ({ ...all, [moveIndex]: { ...(all[moveIndex] ?? NEW_RETRY), ...patch } }));
-
-  const tryMove = (move: MoveReview, uci: string) => {
-    if (!review) return;
-    const state = retries[move.ply] ?? NEW_RETRY;
-    const san = play(move.fen_before, uci).san;
-    setRetry(move.ply, { feedback: { kind: "checking", san }, error: null });
-    api
-      .explain({ fen: review.start_fen, moves: moves.slice(0, move.ply - 1).map((m) => m.uci), move: uci, user_color: userColor })
-      .then((result) => {
-        if (SOLVED.has(result.classification) || result.ep_loss <= 0.02) {
-          setRetry(move.ply, { status: "solved", found: result, feedback: null, attempts: state.attempts + 1 });
-        } else {
-          setRetry(move.ply, { feedback: { kind: "wrong", attempt: result }, attempts: state.attempts + 1 });
-        }
-      })
-      .catch((e: unknown) => setRetry(move.ply, { feedback: null, error: e instanceof Error ? e.message : String(e) }));
-  };
 
   const onBoardMove = (orig: Key, dest: Key) => {
-    if (retrying && current) {
-      tryMove(current, uciFromDrag(current.fen_before, orig, dest));
-    } else if (view.kind === "game") {
+    if (view.kind === "game") {
       explore(ply, [], [], uciFromDrag(fens[ply], orig, dest));
     } else if (view.kind === "explore") {
       explore(view.basePly, view.moves, view.sans, uciFromDrag(explorePositions.at(-1)!, orig, dest));
@@ -254,16 +209,7 @@ export function ReviewPage({ gameId, initialPly }: { gameId: number; initialPly?
   let whiteWin = ply ? moves[ply - 1].win_after : moves[0]?.win_before ?? 50;
   let score = ply ? moves[ply - 1].eval_after : moves[0]?.eval_before ?? null;
   let interactive = true;
-  if (retrying && current && retry) {
-    // The position before your move, with the answer hidden.
-    fen = current.fen_before;
-    lastMove = current.ply > 1 ? squaresOf(moves[current.ply - 2].uci) : undefined;
-    const focus = current.explanation?.focus;
-    annotations = retry.hints >= 2 && focus ? [{ orig: focus, brush: "yellow" }] : [];
-    whiteWin = current.win_before;
-    score = current.eval_before;
-    interactive = retry.feedback?.kind !== "checking";
-  } else if (view.kind === "line") {
+  if (view.kind === "line") {
     fen = linePositions[view.index];
     lastMove = view.index ? squaresOf(view.line.uci[view.index - 1]) : undefined;
     const next = view.line.uci[view.index];
@@ -337,45 +283,35 @@ export function ReviewPage({ gameId, initialPly }: { gameId: number; initialPly?
         <EvalGraph moves={moves} ply={ply} onSelect={goto} />
       </div>
 
-      <div className="side-panel">
-        {view.kind === "explore" ? (
-          view.loading ? (
-            <div className="card">Thinking about {view.sans.at(-1)}…</div>
-          ) : view.error ? (
-            <div className="card error">{view.error}</div>
-          ) : view.result ? (
-            <CoachPanel move={view.result} userColor={userColor} kicker="Your idea, explained" onShowLine={showLine} />
+      <div className="side-panel fixed">
+        <div className="panel-slot">
+          {view.kind === "explore" ? (
+            view.loading ? (
+              <div className="card">Thinking about {view.sans.at(-1)}…</div>
+            ) : view.error ? (
+              <div className="card error">{view.error}</div>
+            ) : view.result ? (
+              <CoachPanel move={view.result} userColor={userColor} kicker="Your idea, explained" onShowLine={showLine} />
+            ) : (
+              <div className="card">
+                Drag a piece on the board to play the move you were considering. You'll see how the engine
+                rates it and why.
+              </div>
+            )
+          ) : current ? (
+            <CoachPanel
+              move={current}
+              userColor={userColor}
+              onShowLine={showLine}
+              drillHref={drills.has(current.ply) ? `#/drills/${drills.get(current.ply)}` : undefined}
+              onTryAnother={() =>
+                setView({ kind: "explore", basePly: current.ply - 1, moves: [], sans: [], result: null, loading: false, error: null })
+              }
+            />
           ) : (
-            <div className="card">
-              Drag a piece on the board to play the move you were considering. You'll see how the engine
-              rates it and why.
-            </div>
-          )
-        ) : retrying && current && retry ? (
-          <RetryPanel
-            title={`Move ${current.move_number}: find a better move`}
-            prompt={`In the game you played ${current.san} here (${LABELS[current.classification].toLowerCase()}). There was something clearly better — drag a piece to try.`}
-            hints={current.explanation?.hints ?? []}
-            hintsShown={retry.hints}
-            attempts={retry.attempts}
-            feedback={retry.feedback}
-            error={retry.error}
-            onHint={() => setRetry(current.ply, { hints: retry.hints + 1 })}
-            onReveal={() => setRetry(current.ply, { status: "revealed", feedback: null })}
-          />
-        ) : current ? (
-          <CoachPanel
-            move={current}
-            userColor={userColor}
-            kicker={foundText(retries[current.ply])}
-            onShowLine={showLine}
-            onTryAnother={() =>
-              setView({ kind: "explore", basePly: current.ply - 1, moves: [], sans: [], result: null, loading: false, error: null })
-            }
-          />
-        ) : (
-          <GameSummary review={review} onSelect={goto} />
-        )}
+            <GameSummary review={review} onSelect={goto} />
+          )}
+        </div>
         <div className="row">
           <button className="ghost" onClick={() => goto(0)}>Game summary</button>
           {game?.url && (

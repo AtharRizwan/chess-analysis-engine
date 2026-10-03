@@ -340,6 +340,10 @@ class Database:
         params.append(limit)
         return [dict(r) for r in self.conn.execute(query, params).fetchall()]
 
+    def drills_for_game(self, game_id: int) -> list[dict[str, Any]]:
+        rows = self.conn.execute("SELECT * FROM drills WHERE game_id = ? ORDER BY ply", (game_id,)).fetchall()
+        return [dict(r) for r in rows]
+
     def get_drill(self, drill_id: int) -> dict[str, Any] | None:
         row = self.conn.execute("SELECT * FROM drills WHERE id = ?", (drill_id,)).fetchone()
         return dict(row) if row else None

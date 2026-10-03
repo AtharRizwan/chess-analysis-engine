@@ -246,6 +246,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/drills/{drill_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Drill */
+        get: operations["get_drill_api_drills__drill_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/games/{game_id}/drills": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Game Drills */
+        get: operations["game_drills_api_games__game_id__drills_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/drills/{drill_id}/attempt": {
         parameters: {
             query?: never;
@@ -376,6 +410,11 @@ export interface components {
         };
         /** AttemptResult */
         AttemptResult: {
+            /**
+             * Verdict
+             * @enum {string}
+             */
+            verdict: "solved" | "close" | "wrong";
             /** Correct */
             correct: boolean;
             /** Solution */
@@ -461,6 +500,33 @@ export interface components {
             color: "white" | "black";
             /** Played */
             played: string;
+            /**
+             * Played Uci
+             * @default
+             */
+            played_uci: string;
+            /**
+             * Classification
+             * @default mistake
+             * @enum {string}
+             */
+            classification: "brilliant" | "great" | "best" | "excellent" | "good" | "book" | "forced" | "inaccuracy" | "mistake" | "miss" | "blunder";
+            /**
+             * Win Before
+             * @default 50
+             */
+            win_before: number;
+            /**
+             * Win After
+             * @default 50
+             */
+            win_after: number;
+            /**
+             * Why
+             * @default
+             */
+            why: string;
+            why_line?: components["schemas"]["LineRef"] | null;
             /** Themes */
             themes?: string[];
             /** Hints */
@@ -951,11 +1017,6 @@ export interface components {
              * @default true
              */
             tablebase: boolean;
-            /**
-             * Learn Mode
-             * @default true
-             */
-            learn_mode: boolean;
             /**
              * Coach Enabled
              * @default false
@@ -1468,6 +1529,68 @@ export interface operations {
             };
             header?: never;
             path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DrillCard"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_drill_api_drills__drill_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                drill_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DrillCard"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    game_drills_api_games__game_id__drills_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                game_id: number;
+            };
             cookie?: never;
         };
         requestBody?: never;

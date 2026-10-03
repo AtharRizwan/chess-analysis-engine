@@ -11,14 +11,16 @@ from pydantic import BaseModel
 from chess_analysis_engine.api.deps import StateDep
 from chess_analysis_engine.config import PRESETS
 from chess_analysis_engine.learn.drills import (
+    CLOSE_CLASSES,
     GOOD_CLASSES,
     SOLVE_TOLERANCE,
     AttemptResult,
     DrillCard,
     DrillStats,
+    Verdict,
     card,
+    grade,
     now_iso,
-    schedule,
 )
 from chess_analysis_engine.learn.insights import Insights, aggregate
 from chess_analysis_engine.models import MoveReview
@@ -49,6 +51,20 @@ def due_drills(state: StateDep, theme: str | None = None, limit: int = 20) -> li
     return [card(row) for row in state.db.due_drills(now_iso(), limit, theme)]
 
 
+@router.get("/drills/{drill_id}", response_model=DrillCard)
+def get_drill(drill_id: int, state: StateDep) -> DrillCard:
+    row = state.db.get_drill(drill_id)
+    if row is None:
+        raise HTTPException(404, "drill not found")
+    return card(row)
+
+
+@router.get("/games/{game_id}/drills", response_model=list[DrillCard])
+def game_drills(game_id: int, state: StateDep) -> list[DrillCard]:
+    state.backfill()
+    return [card(row) for row in state.db.drills_for_game(game_id)]
+
+
 @router.post("/drills/{drill_id}/attempt", response_model=AttemptResult)
 def attempt(drill_id: int, body: AttemptRequest, state: StateDep) -> AttemptResult:
     row = state.db.get_drill(drill_id)
@@ -64,9 +80,9 @@ def attempt(drill_id: int, body: AttemptRequest, state: StateDep) -> AttemptResu
     if not board.is_legal(move):
         raise HTTPException(400, f"{body.move} is not a legal move here")
     accepted: list[str] = json.loads(row["accepted"])
-    correct = body.move in accepted
+    verdict: Verdict = "solved" if body.move in accepted else "wrong"
     tried: MoveReview | None = None
-    if not correct:
+    if verdict == "wrong":
         if state.interactive_pool is None:
             raise HTTPException(503, "Stockfish is not available")
         settings = state.settings()
@@ -80,23 +96,24 @@ def attempt(drill_id: int, body: AttemptRequest, state: StateDep) -> AttemptResu
             threats=settings.threats,
             tablebase=settings.tablebase,
         )
-        correct = tried.classification in GOOD_CLASSES or tried.ep_loss <= SOLVE_TOLERANCE
-        if correct:
+        if tried.classification in GOOD_CLASSES or tried.ep_loss <= SOLVE_TOLERANCE:
+            verdict = "solved"
             accepted.append(body.move)  # another good solution: remember it
-    box, due = schedule(row["box"], correct)
+        elif tried.classification in CLOSE_CLASSES:
+            verdict = "close"
     state.db.update_drill(
         drill_id,
-        box=box,
-        due_at=due,
+        **grade(row, verdict),
         attempts=row["attempts"] + 1,
-        solved=row["solved"] + int(correct),
-        last_result="solved" if correct else "missed",
+        solved=row["solved"] + int(verdict == "solved"),
+        last_result={"solved": "solved", "close": "close", "wrong": "missed"}[verdict],
         accepted=json.dumps(accepted),
     )
     updated = state.db.get_drill(drill_id)
     assert updated is not None
     return AttemptResult(
-        correct=correct,
+        verdict=verdict,
+        correct=verdict == "solved",
         solution=row["best"],
         attempt=tried,
         answer=MoveReview.model_validate_json(row["payload"]),
@@ -109,6 +126,5 @@ def reveal(drill_id: int, state: StateDep) -> MoveReview:
     row = state.db.get_drill(drill_id)
     if row is None:
         raise HTTPException(404, "drill not found")
-    box, due = schedule(row["box"], correct=False)
-    state.db.update_drill(drill_id, box=box, due_at=due, last_result="revealed")
+    state.db.update_drill(drill_id, **grade(row, "wrong"), last_result="revealed")
     return MoveReview.model_validate_json(row["payload"])
