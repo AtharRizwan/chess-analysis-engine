@@ -760,3 +760,39 @@ main.page {
 .hint-button {
   min-width: 132px;
 }
+
+/* Moves inside explanations: linked to the board (hover or tap to see, click or tap again to step in). */
+.mv-ref {
+  display: inline;
+  padding: 0;
+  margin: 0;
+  border: none;
+  border-radius: 3px;
+  background: none;
+  font: inherit;
+  color: inherit;
+  line-height: inherit;
+  text-decoration: underline dotted var(--accent);
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.mv-ref:hover:not(:disabled),
+.mv-ref:focus-visible,
+.mv-ref.active {
+  background: var(--accent-wash);
+  color: var(--accent);
+  text-decoration-style: solid;
+}
+.board-label {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  z-index: 3;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  background: var(--accent);
+  color: var(--accent-ink);
+  pointer-events: none;
+}

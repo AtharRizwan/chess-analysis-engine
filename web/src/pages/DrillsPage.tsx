@@ -2,6 +2,7 @@ import type { Key } from "@lichess-org/chessground/types";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { type Annotation, api, type DrillCard, type DrillStats, type LineRef, type MoveReview } from "../api/client";
 import { Board } from "../components/Board";
+import { type BoardLink, BoardLinkContext, useBoardPreview } from "../components/ChessText";
 import { CoachPanel } from "../components/CoachPanel";
 import { DrillIntro } from "../components/DrillIntro";
 import { type RetryFeedback, RetryPanel } from "../components/RetryPanel";
@@ -45,6 +46,22 @@ export function DrillsPage({ theme, drillId }: { theme?: string; drillId?: numbe
 
   const card = cards?.[index];
   const linePositions = useMemo(() => (lineView ? positionsAlong(lineView.line.start_fen, lineView.line.uci) : []), [lineView]);
+
+  // Moves mentioned in the texts: hover shows one on the board, click steps into its line.
+  const viewKey = `${index}:${stage}:${lineView?.index ?? ""}:${tried?.uci ?? ""}:${outcome ? 1 : 0}`;
+  const { preview, active, show, clear } = useBoardPreview(viewKey);
+  const boardLink = useMemo<BoardLink>(
+    () => ({
+      preview: show,
+      active,
+      game: card ? { start_fen: card.start_fen, uci: card.moves, san: [] } : null,
+      open: (ref) => {
+        clear();
+        setLineView({ line: ref.line, index: ref.index + 1, title: `From the explanation: ${ref.label}` });
+      },
+    }),
+    [show, active, clear, card],
+  );
 
   const next = () => {
     setIndex((i) => i + 1);
@@ -175,10 +192,15 @@ export function DrillsPage({ theme, drillId }: { theme?: string; drillId?: numbe
     const upcoming = lineView.line.uci[lineView.index];
     annotations = upcoming ? [{ orig: upcoming.slice(0, 2), dest: upcoming.slice(2, 4), brush: "blue" }] : [];
   }
+  if (preview) {
+    fen = preview.fen;
+    lastMove = undefined;
+    annotations = [{ orig: preview.uci.slice(0, 2), dest: preview.uci.slice(2, 4), brush: "blue" }];
+  }
   const side = card.color === "white" ? "White" : "Black";
 
   return (
-    <>
+    <BoardLinkContext.Provider value={boardLink}>
       {header}
       <div className="review">
         <div>
@@ -187,8 +209,9 @@ export function DrillsPage({ theme, drillId }: { theme?: string; drillId?: numbe
             orientation={card.color}
             lastMove={lastMove}
             annotations={annotations}
-            interactive={stage === "try" && !outcome && !lineView && !tried}
+            interactive={stage === "try" && !outcome && !lineView && !tried && !preview}
             onMove={onMove}
+            label={preview?.label}
           />
           {lineView && (
             <div className="mode-banner">
@@ -259,6 +282,6 @@ export function DrillsPage({ theme, drillId }: { theme?: string; drillId?: numbe
           )}
         </div>
       </div>
-    </>
+    </BoardLinkContext.Provider>
   );
 }

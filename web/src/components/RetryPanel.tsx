@@ -1,4 +1,7 @@
+import { useContext, useMemo } from "react";
 import type { MoveReview } from "../api/client";
+import { buildIndex, contextFor } from "../lib/notation";
+import { BoardLinkContext, ChessText } from "./ChessText";
 
 export type RetryFeedback =
   | { kind: "checking"; san: string }
@@ -24,7 +27,10 @@ const sentence = (text: string) => (/[.!?…]$/.test(text) ? text : `${text}.`);
 /** "Find a better move": progressive hints, feedback on each try, and a way out. */
 export function RetryPanel(props: Props) {
   const { title, prompt, hints, hintsShown, attempts, feedback, error, onHint, onReveal, onTryAgain } = props;
-  const explanation = feedback && feedback.kind !== "checking" ? feedback.attempt?.explanation : undefined;
+  const attempt = feedback && feedback.kind !== "checking" ? feedback.attempt : null;
+  const explanation = attempt?.explanation;
+  const link = useContext(BoardLinkContext);
+  const notation = useMemo(() => (link && attempt ? buildIndex(contextFor(attempt, link.game)) : null), [attempt, link?.game]);
   return (
     <div className="card coach">
       <div className="muted small">Your turn</div>
@@ -44,8 +50,9 @@ export function RetryPanel(props: Props) {
         {feedback?.kind === "checking" && <p className="muted">Checking {feedback.san}…</p>}
         {feedback?.kind === "wrong" && (
           <div className="lesson" style={{ borderLeftColor: "var(--serious)" }}>
-            <strong>{feedback.san} isn't it.</strong> {explanation && sentence(explanation.headline)}{" "}
-            {explanation?.sections?.[0]?.text}
+            <strong>{feedback.san} isn't it.</strong>{" "}
+            {explanation && <ChessText text={sentence(explanation.headline)} index={notation} />}{" "}
+            {explanation?.sections?.[0]?.text && <ChessText text={explanation.sections[0].text} index={notation} />}
             {feedback.attempt?.refutation?.san?.[0] && (
               <div className="muted small" style={{ marginTop: 4 }}>
                 The red arrow shows the reply that makes it fail.

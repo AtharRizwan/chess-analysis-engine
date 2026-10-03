@@ -1,9 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import { useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { LineRef, MoveReview, Narration, Side } from "../api/client";
 import { moveLabel } from "../lib/chess";
 import { narrate, useCoachStatus, useCoachVoice } from "../lib/coach";
+import { buildIndex, contextFor } from "../lib/notation";
 import { BAD, chancesFor, FACT_LABELS, MOTIF_LABELS, pct } from "../lib/format";
 import { Badge } from "./Badge";
+import { BoardLinkContext, ChessText } from "./ChessText";
 
 type Props = {
   move: MoveReview;
@@ -78,6 +80,10 @@ export function CoachPanel({ move, userColor, kicker, onShowLine, onTryAnother, 
     if (body.current) body.current.scrollTop = 0;
   }, [moveKey]);
 
+  // Every move mentioned in the explanation, placed on the board (only when a page can show them).
+  const link = useContext(BoardLinkContext);
+  const notation = useMemo(() => (link ? buildIndex(contextFor(move, link.game)) : null), [move, link?.game]);
+
   const perspective: Side = userColor ?? move.color;
   const whose = userColor ? "Your" : `${perspective === "white" ? "White" : "Black"}'s`;
   const before = chancesFor(move.win_before, perspective);
@@ -119,7 +125,7 @@ export function CoachPanel({ move, userColor, kicker, onShowLine, onTryAnother, 
       <div className="coach-body" ref={body}>
         {explanation && (
           <div className="headline">
-            {explanation.headline}
+            <ChessText text={explanation.headline} index={notation} />
             {coached && (
               <span className="ai-tag" title="Written by Claude from the facts below, and checked against them">
                 ✦ AI
@@ -154,8 +160,12 @@ export function CoachPanel({ move, userColor, kicker, onShowLine, onTryAnother, 
         )}
         {(explanation?.sections ?? []).map((section, i) => (
           <section key={i}>
-            <h4>{section.title}</h4>
-            <p>{section.text}</p>
+            <h4>
+              <ChessText text={section.title} index={notation} />
+            </h4>
+            <p>
+              <ChessText text={section.text} index={notation} />
+            </p>
             {section.line && section.line.uci.length > 0 && (
               <button className="linkish" onClick={() => onShowLine(section.line!, section.title)}>
                 ▶ Show this line on the board
@@ -166,7 +176,7 @@ export function CoachPanel({ move, userColor, kicker, onShowLine, onTryAnother, 
         {explanation?.lesson && (
           <div className="lesson">
             <strong>Lesson: </strong>
-            {explanation.lesson}
+            <ChessText text={explanation.lesson} index={notation} />
           </div>
         )}
         {bad && move.difficulty && <p className="muted small">{DIFFICULTY[move.difficulty]}</p>}

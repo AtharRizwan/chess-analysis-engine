@@ -17,6 +17,8 @@ type Props = {
   /** Let the side to move play a move (the "why not this move?" explorer). */
   interactive?: boolean;
   onMove?: (orig: Key, dest: Key) => void;
+  /** A small tag in the corner, e.g. the move being previewed. Overlaid, so the layout doesn't move. */
+  label?: string;
 };
 
 const BRUSHES: Record<Annotation["brush"] & string, string> = {
@@ -36,7 +38,7 @@ export function toShapes(annotations: Annotation[]): DrawShape[] {
 }
 
 /** The chessboard (lichess's chessground), driven entirely by props. */
-export function Board({ fen, orientation, lastMove, annotations = [], interactive = false, onMove }: Props) {
+export function Board({ fen, orientation, lastMove, annotations = [], interactive = false, onMove, label }: Props) {
   const element = useRef<HTMLDivElement>(null);
   const ground = useRef<Api | null>(null);
   const moveHandler = useRef(onMove);
@@ -83,6 +85,7 @@ export function Board({ fen, orientation, lastMove, annotations = [], interactiv
   return (
     <div className="board-wrap">
       <div ref={element} className="cg-wrap" />
+      {label && <div className="board-label">{label}</div>}
     </div>
   );
 }
