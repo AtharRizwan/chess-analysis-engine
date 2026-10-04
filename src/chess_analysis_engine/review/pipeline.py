@@ -14,12 +14,13 @@ from chess_analysis_engine.engine.pool import EnginePool, Request
 from chess_analysis_engine.engine.scoring import (
     ep_for,
     game_accuracy,
+    missed_mate,
     move_accuracy,
     mover_win_percents,
     white_win_percent,
 )
 from chess_analysis_engine.explain.templates import build_explanation
-from chess_analysis_engine.facts.board import is_recapture, sacrificed_material
+from chess_analysis_engine.facts.board import is_recapture, rescues_piece, sacrificed_material, see
 from chess_analysis_engine.facts.extract import MoveFacts, MoveInput, explain_move
 from chess_analysis_engine.models import (
     CLASSIFICATIONS,
@@ -66,6 +67,8 @@ class _Static:
     legal_moves: int
     sacrifice: int
     is_recapture: bool
+    takes_material: bool
+    rescues_piece: bool
     in_check: bool
     delivers_mate: bool
 
@@ -75,6 +78,8 @@ def static_facts(board: chess.Board, move: chess.Move) -> _Static:
         legal_moves=board.legal_moves.count(),
         sacrifice=sacrificed_material(board, move),
         is_recapture=is_recapture(board, move),
+        takes_material=board.is_capture(move) and see(board, move) >= 0,
+        rescues_piece=rescues_piece(board, move),
         in_check=board.is_check(),
         delivers_mate=_delivers_mate(board, move),
     )
@@ -133,8 +138,11 @@ class _Game:
                     book=self.book_flags[i],
                     sacrifice=static.sacrifice,
                     is_recapture=static.is_recapture,
+                    takes_material=static.takes_material,
+                    rescues_piece=static.rescues_piece,
                     in_check=static.in_check,
                     delivers_mate=static.delivers_mate,
+                    missed_mate=missed_mate(color, before.score, after.score),
                     opponent_prev_loss=None if prev is None or prev.is_best else prev.loss,
                     ep_before_opponent_error=None if prev is None else 1.0 - prev.ep_before,
                 )

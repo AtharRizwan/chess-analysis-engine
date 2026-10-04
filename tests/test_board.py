@@ -4,6 +4,7 @@ from chess_analysis_engine.facts.board import (
     best_capture,
     is_recapture,
     material_balance,
+    rescues_piece,
     sacrificed_material,
     see,
 )
@@ -40,6 +41,33 @@ def test_queen_sacrifice_in_the_opera_game():
     assert sacrificed_material(board, move(board, "Qb8+")) == 900
     # A quiet developing move offers nothing.
     assert sacrificed_material(chess.Board(), chess.Move.from_uci("g1f3")) == 0
+
+
+def test_only_material_the_move_newly_offers_counts_as_a_sacrifice():
+    # 8.Bxd5 gives the bishop for a pawn: if 8...Qxd5, 9.Nf6+ forks king and queen.
+    board = chess.Board("r1bqk2r/ppp2p1p/2n3p1/3pp3/1bB1NP2/6Q1/PPPP2PP/R1B1K1NR w KQkq - 0 8")
+    assert sacrificed_material(board, move(board, "Bxd5")) == 200
+    # White's knight on d5 already hangs to the e6 pawn; a quiet move elsewhere doesn't "offer" it.
+    board = chess.Board("4k3/8/4p3/3N4/8/8/PP6/4K3 w - - 0 1")
+    assert rescues_piece(board, move(board, "Nc3"))
+    assert sacrificed_material(board, move(board, "a3")) == 0
+    # King moves never count, even while something else hangs.
+    assert sacrificed_material(board, move(board, "Kd2")) == 0
+    # Taking a rook while a knight is left hanging: the rook pays for the knight.
+    board = chess.Board("4k3/8/8/3n4/8/8/1r6/1R2K3 w - - 0 1")
+    assert sacrificed_material(board, move(board, "Rxb2")) == 0
+
+
+def test_recapture_leaving_an_old_hanging_piece_is_no_sacrifice():
+    # 7...Bxc3+ 8.bxc3: White's bishop on h6 was already en prise (g7 pawn), before and after.
+    board = chess.Board("rnbqk2r/pppp1ppp/7B/4P3/3PP3/2b2N2/PPP3PP/R2QKB1R w KQkq - 0 8")
+    assert sacrificed_material(board, move(board, "bxc3")) == 0
+
+
+def test_rescuing_an_attacked_piece():
+    board = chess.Board("4k3/8/4p3/3N4/8/8/8/4K3 w - - 0 1")  # e6 pawn attacks the d5 knight
+    assert rescues_piece(board, move(board, "Nc3"))
+    assert not rescues_piece(board, move(board, "Kd2"))
 
 
 def test_recapture_detection():

@@ -56,9 +56,21 @@ moves are always re-searched 4 plies deeper.
 
 1. **Engine pass:** every position with MultiPV 3, spread over several single-threaded Stockfish
    processes, cached in SQLite.
-2. **Classification:** expected points lost per move, on lichess's win-chance curve. Labels go from Best
-   to Blunder, plus Book, Forced, Great (only move), Brilliant (a real sacrifice) and Miss (failing to
-   punish an error). Accuracy uses lichess's formula.
+2. **Classification:** expected points lost per move, with chess.com's thresholds. The win-chance
+   curve behind the labels is flatter than lichess's: it was fitted to chess.com's Game Review of real
+   games, so a two-pawn swing in a level position weighs less, and squandering a decided position
+   weighs more. It is one fixed curve, not adjusted to anyone's rating. The winning-chances graph and
+   accuracy keep lichess's curve and formula. Labels go from Best to Blunder, plus:
+   - **Book** and **Forced**;
+   - **Great:** either the best move right after your opponent's mistake (finding the punishment), or
+     a hard-to-find only move. For the only-move case, obvious ones don't count: taking material,
+     recapturing, saving an attacked piece, getting out of check, or keeping an already-won game won.
+   - **Brilliant:** the engine's move, putting at least an exchange newly on offer, and clearly better
+     than every quieter move;
+   - **Miss:** failing to punish an error, or losing a forced mate (for example, missing a mate in 1
+     while staying winning).
+
+   Accuracy uses lichess's formula.
 3. **Facts:** static exchange evaluation (SEE), hanging pieces, tactic detectors (fork, pin, skewer,
    discovered attack, double check and more) confirmed on the engine line, named mate patterns,
    null-move threat searches ("what was your opponent threatening?"), positional comparisons, clock

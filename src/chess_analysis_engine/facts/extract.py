@@ -13,6 +13,7 @@ from typing import Any
 import chess
 
 from chess_analysis_engine.engine.pool import EnginePool
+from chess_analysis_engine.engine.scoring import missed_mate as loses_mate
 from chess_analysis_engine.facts import endgame
 from chess_analysis_engine.facts.board import (
     VALUES,
@@ -331,8 +332,12 @@ def explain_move(
             annotations=[_arrow(refutation.moves[0], "red")],
         )
     missed_mate = _mate_for(inp.before.score.mate, mover)
-    keeps_mate = _mate_for(inp.after.score.mate, mover) is not None or after.is_checkmate()
-    if best_line is not None and missed_mate is not None and not keeps_mate:
+    # Same rule as the "Miss" label: the mate is gone, or a short one (mate in 3 or less) got longer.
+    if (
+        best_line is not None
+        and missed_mate is not None
+        and loses_mate(color_name(mover), inp.before.score, inp.after.score)
+    ):
         shown = best_line.trimmed(mover, max_plies=2 * missed_mate)
         out.add(
             "missed_mate",

@@ -116,6 +116,10 @@ class Engine:
         max_seconds: float | None = None,
     ) -> PositionEval:
         """Analyse `board` to `depth` (or `nodes`), stopping early after `max_seconds`."""
+        # Work on a private copy: python-chess's repetition checks pop and re-push moves, so two
+        # threads analysing the same Board object would otherwise see each other's half-undone
+        # positions (and send the engine the wrong one).
+        board = board.copy()
         terminal = terminal_score(board)
         if terminal is not None:
             return PositionEval(fen=board.fen(), score=terminal, engine=self.name)

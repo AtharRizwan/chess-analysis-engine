@@ -17,8 +17,8 @@ type Props = {
   /** Let the side to move play a move (the "why not this move?" explorer). */
   interactive?: boolean;
   onMove?: (orig: Key, dest: Key) => void;
-  /** A small tag in the corner, e.g. the move being previewed. Overlaid, so the layout doesn't move. */
-  label?: string;
+  /** Animate piece moves (off for previews: jumping between previewed positions should be instant). */
+  animate?: boolean;
 };
 
 const BRUSHES: Record<Annotation["brush"] & string, string> = {
@@ -38,10 +38,11 @@ export function toShapes(annotations: Annotation[]): DrawShape[] {
 }
 
 /** The chessboard (lichess's chessground), driven entirely by props. */
-export function Board({ fen, orientation, lastMove, annotations = [], interactive = false, onMove, label }: Props) {
+export function Board({ fen, orientation, lastMove, annotations = [], interactive = false, onMove, animate = true }: Props) {
   const element = useRef<HTMLDivElement>(null);
   const ground = useRef<Api | null>(null);
   const moveHandler = useRef(onMove);
+  const animated = useRef(animate); // whether the previous position was shown with animation
   moveHandler.current = onMove;
 
   useEffect(() => {
@@ -61,7 +62,11 @@ export function Board({ fen, orientation, lastMove, annotations = [], interactiv
   const shapeKey = JSON.stringify(annotations);
   useEffect(() => {
     const turn = turnOf(fen);
+    // Into, between and out of previews the board jumps; only ordinary moves slide.
+    const slide = animate && animated.current;
+    animated.current = animate;
     ground.current?.set({
+      animation: { enabled: slide, duration: 160 },
       fen,
       orientation,
       turnColor: turn,
@@ -80,12 +85,11 @@ export function Board({ fen, orientation, lastMove, annotations = [], interactiv
     });
     // annotations are compared by value (shapeKey) so a new array with the same content doesn't redraw
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fen, orientation, lastMove?.[0], lastMove?.[1], shapeKey, interactive]);
+  }, [fen, orientation, lastMove?.[0], lastMove?.[1], shapeKey, interactive, animate]);
 
   return (
     <div className="board-wrap">
       <div ref={element} className="cg-wrap" />
-      {label && <div className="board-label">{label}</div>}
     </div>
   );
 }

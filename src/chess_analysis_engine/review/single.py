@@ -6,7 +6,7 @@ import chess
 
 from chess_analysis_engine.config import Preset
 from chess_analysis_engine.engine.pool import EnginePool, Request
-from chess_analysis_engine.engine.scoring import ep_for
+from chess_analysis_engine.engine.scoring import ep_for, missed_mate
 from chess_analysis_engine.explain.templates import build_explanation
 from chess_analysis_engine.facts.extract import MoveInput, explain_move
 from chess_analysis_engine.models import Color, MoveReview, color_name
@@ -65,8 +65,11 @@ def review_move(
         book=book,
         sacrifice=static.sacrifice,
         is_recapture=static.is_recapture,
+        takes_material=static.takes_material,
+        rescues_piece=static.rescues_piece,
         in_check=static.in_check,
         delivers_mate=static.delivers_mate,
+        missed_mate=missed_mate(color, before_eval.score, after_eval.score),
     )
     review = make_move_review(
         board, move, before_eval, after_eval, ctx, ply=len(board.move_stack) + 1, book=book

@@ -211,7 +211,7 @@ export function DrillsPage({ theme, drillId }: { theme?: string; drillId?: numbe
             annotations={annotations}
             interactive={stage === "try" && !outcome && !lineView && !tried && !preview}
             onMove={onMove}
-            label={preview?.label}
+            animate={!preview}
           />
           {lineView && (
             <div className="mode-banner">

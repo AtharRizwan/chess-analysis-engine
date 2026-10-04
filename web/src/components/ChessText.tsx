@@ -60,7 +60,18 @@ type Preview = { ref: MoveRef; sticky: boolean };
 /** Preview state for a page's board. `resetKey` changing (a new move or view) clears it. */
 export function useBoardPreview(resetKey: unknown) {
   const [preview, setPreview] = useState<Preview | null>(null);
-  useEffect(() => setPreview(null), [resetKey]);
+  // Leaving a move waits a moment before showing the game again, so sliding the mouse from one move to
+  // the next (across the space between them) goes straight from preview to preview.
+  const leaving = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cancelLeave = () => {
+    if (leaving.current) clearTimeout(leaving.current);
+    leaving.current = null;
+  };
+  useEffect(() => cancelLeave, []);
+  useEffect(() => {
+    cancelLeave();
+    setPreview(null);
+  }, [resetKey]);
   useEffect(() => {
     // A tapped preview stays until the next tap somewhere other than a move.
     if (!preview?.sticky) return;
@@ -71,11 +82,19 @@ export function useBoardPreview(resetKey: unknown) {
     return () => document.removeEventListener("pointerdown", onDown);
   }, [preview?.sticky]);
   const show = useCallback((ref: MoveRef | null, sticky = false) => {
-    setPreview((current) => {
-      if (ref) return { ref, sticky };
-      return current?.sticky ? current : null; // leaving with the mouse doesn't undo a tap
-    });
+    cancelLeave();
+    if (ref) {
+      setPreview({ ref, sticky });
+      return;
+    }
+    leaving.current = setTimeout(() => {
+      leaving.current = null;
+      setPreview((current) => (current?.sticky ? current : null)); // leaving with the mouse doesn't undo a tap
+    }, 150);
   }, []);
-  const clear = useCallback(() => setPreview(null), []);
+  const clear = useCallback(() => {
+    cancelLeave();
+    setPreview(null);
+  }, []);
   return { preview: preview?.ref ?? null, active: preview?.sticky ? preview.ref.key : null, show, clear };
 }

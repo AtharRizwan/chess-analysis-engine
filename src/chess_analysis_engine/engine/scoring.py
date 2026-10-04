@@ -1,7 +1,11 @@
 """Turning engine scores into winning chances, expected points and accuracy.
 
-The curve and the accuracy formulas are lichess's, which were fitted on human games:
-https://lichess.org/page/accuracy
+Two curves:
+- winning chances (the graph, the "64% → 8%" text) and accuracy use lichess's curve and formulas,
+  fitted on human games: https://lichess.org/page/accuracy
+- expected points for move *labels* use a flatter curve, fitted to chess.com's Game Review of the
+  user's own games: a two-pawn swing in a level position weighs less, and +8 → +12 in a decided one
+  weighs more. It is one fixed curve, not adjusted to anyone's rating.
 """
 
 from __future__ import annotations
@@ -13,27 +17,46 @@ from chess_analysis_engine.models import Color, Score
 
 # Slope of lichess's centipawn → winning-chances curve.
 K = 0.00368208
+# Slope of the curve for move labels (see the module docstring).
+LABEL_K = 0.0022
 # lichess caps evaluations at ±10 pawns for win% and accuracy.
 CP_CEILING = 1000
 
 
-def cp_to_ep(cp: float) -> float:
-    """Expected points (0..1) for the side that is `cp` centipawns ahead."""
-    return 1.0 / (1.0 + math.exp(-K * cp))
+def cp_to_ep(cp: float, k: float = K) -> float:
+    """Expected points (0..1) for the side that is `cp` centipawns ahead (lichess's curve by default)."""
+    return 1.0 / (1.0 + math.exp(-k * cp))
 
 
-def white_ep(score: Score) -> float:
-    """Expected points for White. Mates count as certain wins, unlike in `white_win_percent`."""
+def white_ep(score: Score, k: float = LABEL_K) -> float:
+    """Expected points for White on the label curve. Mates count as certain wins, unlike in
+    `white_win_percent`."""
     if score.result is not None:
         return {"1-0": 1.0, "0-1": 0.0}.get(score.result, 0.5)
     if score.mate is not None:
         return 1.0 if score.mate > 0 else 0.0
-    return cp_to_ep(score.cp or 0)
+    return cp_to_ep(score.cp or 0, k)
 
 
-def ep_for(score: Score, color: Color) -> float:
-    ep = white_ep(score)
+def ep_for(score: Score, color: Color, k: float = LABEL_K) -> float:
+    """Expected points for `color` on the label curve: what move classification works with."""
+    ep = white_ep(score, k)
     return ep if color == "white" else 1.0 - ep
+
+
+def missed_mate(color: Color, before: Score, after: Score) -> bool:
+    """Whether the move lost a forced mate the mover had (`before` is the best line's score, `after` the
+    position after the move, both from White's side): the mate is gone, or a short one (mate in 3 or
+    less) got longer."""
+    sign = 1 if color == "white" else -1
+    if before.mate is None or before.mate * sign <= 0:
+        return False
+    if after.result is not None:
+        return after.result != ("1-0" if color == "white" else "0-1")
+    if after.mate is None or after.mate * sign <= 0:
+        return True
+    shortest = before.mate * sign
+    return shortest <= 3 and after.mate * sign > shortest - 1
 
 
 def white_win_percent(score: Score) -> float:

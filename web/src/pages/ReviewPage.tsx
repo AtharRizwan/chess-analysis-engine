@@ -271,7 +271,7 @@ export function ReviewPage({ gameId, initialPly }: { gameId: number; initialPly?
               annotations={annotations}
               interactive={interactive}
               onMove={onBoardMove}
-              label={preview?.label}
+              animate={!preview}
             />
           </div>
           {view.kind === "game" && (

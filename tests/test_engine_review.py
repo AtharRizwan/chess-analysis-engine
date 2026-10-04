@@ -22,6 +22,23 @@ def test_multipv_lines_and_mate_scores(pool):
     assert result.best is not None and result.best.san[0] == "Rd8#"
 
 
+class _CallersBoard(chess.Board):
+    """Fails if the engine wrapper runs move-undoing checks on the caller's own Board object."""
+
+    def is_fivefold_repetition(self) -> bool:
+        assert not getattr(self, "owned_by_caller", False), "analysed the caller's board in place"
+        return super().is_fivefold_repetition()
+
+
+def test_analysis_never_touches_the_callers_board(pool):
+    # Requests may share a Board object across engine threads, so each analysis must use its own
+    # copy (python-chess's repetition checks undo and redo moves on the board they're given).
+    board = _CallersBoard()
+    board.push_san("e4")
+    board.owned_by_caller = True
+    pool.analyse(board, depth=6)
+
+
 def test_finished_games_need_no_engine(pool):
     mated = chess.Board("3R2k1/5ppp/8/8/8/8/5PPP/6K1 b - - 1 1")
     assert pool.analyse(mated, depth=10).score.result == "1-0"

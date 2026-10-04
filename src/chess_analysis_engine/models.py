@@ -13,7 +13,9 @@ from pydantic import BaseModel, Field
 
 # Bump when a review's content changes in a way the app relies on; older stored reviews are redone.
 # 2: explanations carry retry hints.
-REVIEW_VERSION = 2
+# 3: Brilliant needs a sacrifice the move itself makes; Great excludes obvious only-moves.
+# 4: labels on a curve fitted to chess.com; losing a forced mate is a Miss; Great = punishing an error.
+REVIEW_VERSION = 4
 
 Color = Literal["white", "black"]
 Phase = Literal["opening", "middlegame", "endgame"]

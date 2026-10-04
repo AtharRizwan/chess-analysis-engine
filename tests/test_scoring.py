@@ -1,6 +1,8 @@
 import pytest
 
 from chess_analysis_engine.engine.scoring import (
+    LABEL_K,
+    K,
     cp_to_ep,
     ep_for,
     game_accuracy,
@@ -55,3 +57,16 @@ def test_game_accuracy_handles_tiny_games():
     acc = game_accuracy([50.0, 50.0])
     assert acc["white"] == 100.0
     assert acc["black"] is None
+
+
+def test_labels_use_a_flatter_curve_than_winning_chances():
+    assert LABEL_K < K
+    swing = lambda k: ep_for(Score(cp=200), "white", k) - ep_for(Score(cp=0), "white", k)  # noqa: E731
+    decided = lambda k: ep_for(Score(cp=1200), "white", k) - ep_for(Score(cp=800), "white", k)  # noqa: E731
+    # Throwing away a two-pawn edge in a level game costs less on the label curve...
+    assert swing(LABEL_K) < swing(K)
+    # ...and +12 → +8 in a decided game costs more.
+    assert decided(LABEL_K) > decided(K)
+    assert ep_for(Score(mate=4), "white") == 1.0 and ep_for(Score(mate=4), "black") == 0.0
+    # Winning chances (the graph, accuracy) stay on lichess's curve.
+    assert white_win_percent(Score(cp=300)) == pytest.approx(100 * cp_to_ep(300))

@@ -783,16 +783,3 @@ main.page {
   color: var(--accent);
   text-decoration-style: solid;
 }
-.board-label {
-  position: absolute;
-  top: 6px;
-  left: 6px;
-  z-index: 3;
-  padding: 2px 8px;
-  border-radius: 6px;
-  font-size: 13px;
-  font-weight: 600;
-  background: var(--accent);
-  color: var(--accent-ink);
-  pointer-events: none;
-}

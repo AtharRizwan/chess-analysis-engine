@@ -106,29 +106,60 @@ def winning_captures(board: chess.Board) -> list[tuple[int, chess.Move]]:
     return sorted(found.values(), key=lambda item: -item[0])
 
 
-def sacrificed_material(board: chess.Board, move: chess.Move) -> int:
-    """Material the mover puts on offer with `move`, in the static exchange sense: either a
-    capture that loses the exchange, or something left that the opponent can win by capturing.
+def exposure(board: chess.Board, side: chess.Color) -> dict[chess.Square, int]:
+    """What `side` could win on each square by capturing there now (SEE), as if it were its turn.
 
-    Positive values mean a real offer; a move that keeps everything protected returns 0.
+    Asked of the side *not* to move, this is "what is en prise": a null move hands over the turn
+    (also when the side to move is in check — we only ask what is attacked, not what is legal).
     """
-    offered = 0
+    b = board.copy(stack=False)
+    if b.turn != side:
+        b.push(chess.Move.null())
+    found: dict[chess.Square, int] = {}
+    for capture in b.generate_pseudo_legal_captures():
+        if capture.promotion not in (None, chess.QUEEN) or b.piece_type_at(capture.to_square) == chess.KING:
+            continue
+        if b.is_into_check(capture):
+            continue
+        value = see(b, capture)
+        if value > found.get(capture.to_square, 0):
+            found[capture.to_square] = value
+    return found
+
+
+def sacrificed_material(board: chess.Board, move: chess.Move) -> int:
+    """Material that `move` itself puts on offer, in the static exchange sense.
+
+    That is a capture that loses the exchange, or something the opponent can win after the move that
+    they couldn't win before it (pieces already hanging don't count: every move would "offer" them).
+    Material the move captures pays for what it leaves en prise, so winning a rook while leaving a
+    knight hanging is no sacrifice. King moves and mates offer nothing.
+    """
+    if board.piece_type_at(move.from_square) == chess.KING:
+        return 0
+    mover = board.turn
     is_capture = board.is_capture(move)
-    if is_capture:
-        offered = max(0, -see(board, move))
+    won = see(board, move) if is_capture else 0
+    before = exposure(board, not mover)
     board.push(move)
     try:
         if board.is_checkmate():
             return 0
-        for capture in board.generate_legal_captures():
-            if is_capture and capture.to_square == move.to_square:
-                continue  # already counted by the SEE of the move itself
-            if capture.promotion not in (None, chess.QUEEN):
-                continue
-            offered = max(offered, see(board, capture))
+        after = exposure(board, not mover)
     finally:
         board.pop()
+    offered = max(0, -won)
+    for square, value in after.items():
+        if is_capture and square == move.to_square:
+            continue  # already counted by the SEE of the move itself
+        was = before.get(move.from_square if square == move.to_square else square, 0)
+        offered = max(offered, value - was - max(0, won))
     return offered
+
+
+def rescues_piece(board: chess.Board, move: chess.Move) -> bool:
+    """True if the moved piece was en prise before the move (moving it is the obvious thing to do)."""
+    return exposure(board, not board.turn).get(move.from_square, 0) > 0
 
 
 def is_recapture(board: chess.Board, move: chess.Move) -> bool:
