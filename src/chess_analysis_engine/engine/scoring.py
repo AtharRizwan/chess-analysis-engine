@@ -18,7 +18,7 @@ from chess_analysis_engine.models import Color, Score
 # Slope of lichess's centipawn → winning-chances curve.
 K = 0.00368208
 # Slope of the curve for move labels (see the module docstring).
-LABEL_K = 0.0022
+LABEL_K = 0.0020  # fitted on chess.com's reviews of 44 of the user's games (2026-10-05)
 # lichess caps evaluations at ±10 pawns for win% and accuracy.
 CP_CEILING = 1000
 
@@ -44,19 +44,33 @@ def ep_for(score: Score, color: Color, k: float = LABEL_K) -> float:
     return ep if color == "white" else 1.0 - ep
 
 
+# A forced mate this short counts as "there to be found" even if you stay winning without it.
+SHORT_MATE = 3
+# Without a short mate, giving one up only counts as a miss if it costs you a crushing position.
+CRUSHING_CP = 1000
+
+
 def missed_mate(color: Color, before: Score, after: Score) -> bool:
-    """Whether the move lost a forced mate the mover had (`before` is the best line's score, `after` the
-    position after the move, both from White's side): the mate is gone, or a short one (mate in 3 or
-    less) got longer."""
+    """Whether the move missed a forced mate the mover had, the way chess.com's "Miss" counts it
+    (`before` is the best line's score, `after` the position after the move, both from White's side).
+
+    That is: a mate in 1 that was there and wasn't played (even if a slower mate remains), or a mate
+    that is gone altogether, if it was short (mate in 3 or less) or the position after it isn't crushing
+    (under +10). A longer mate that merely got longer, or a long mate swapped for a crushing position,
+    isn't a miss.
+    """
     sign = 1 if color == "white" else -1
     if before.mate is None or before.mate * sign <= 0:
         return False
     if after.result is not None:
         return after.result != ("1-0" if color == "white" else "0-1")
-    if after.mate is None or after.mate * sign <= 0:
-        return True
     shortest = before.mate * sign
-    return shortest <= 3 and after.mate * sign > shortest - 1
+    if after.mate is not None and after.mate * sign > 0:
+        return shortest == 1  # still mating, but the mate in 1 wasn't played
+    still = (
+        -CRUSHING_CP if after.mate is not None else (after.cp or 0) * sign
+    )  # mate against you isn't crushing
+    return shortest <= SHORT_MATE or still < CRUSHING_CP
 
 
 def white_win_percent(score: Score) -> float:

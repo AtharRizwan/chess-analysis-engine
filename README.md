@@ -56,21 +56,28 @@ moves are always re-searched 4 plies deeper.
 
 1. **Engine pass:** every position with MultiPV 3, spread over several single-threaded Stockfish
    processes, cached in SQLite.
-2. **Classification:** expected points lost per move, with chess.com's thresholds. The win-chance
-   curve behind the labels is flatter than lichess's: it was fitted to chess.com's Game Review of real
-   games, so a two-pawn swing in a level position weighs less, and squandering a decided position
-   weighs more. It is one fixed curve, not adjusted to anyone's rating. The winning-chances graph and
-   accuracy keep lichess's curve and formula. Labels go from Best to Blunder, plus:
+2. **Classification:** expected points lost per move, with chess.com-style thresholds. The curve and
+   thresholds behind the labels were fitted to chess.com's Game Review of 44 real games, checked on
+   games held out of the fit:
+   - the win-chance curve is flatter than lichess's, so a two-pawn swing in a level position weighs
+     less, and squandering a decided position weighs more;
+   - the Good/Inaccuracy boundary sits at 0.04 expected points instead of chess.com's published 0.05.
+
+   It is one fixed setup, not adjusted to anyone's rating. The winning-chances graph and accuracy keep
+   lichess's curve and formula. Labels go from Best to Blunder, plus:
    - **Book** and **Forced**;
-   - **Great:** either the best move right after your opponent's mistake (finding the punishment), or
-     a hard-to-find only move. For the only-move case, obvious ones don't count: taking material,
-     recapturing, saving an attacked piece, getting out of check, or keeping an already-won game won.
+   - **Great:** either the best move right after your opponent's clear mistake (finding the
+     punishment), or a hard-to-find only move. For the only-move case, obvious ones don't count: taking
+     material, recapturing, saving an attacked piece, getting out of check, or keeping an already-won
+     game won.
    - **Brilliant:** the engine's move, putting at least an exchange newly on offer, and clearly better
      than every quieter move;
-   - **Miss:** failing to punish an error, or losing a forced mate (for example, missing a mate in 1
-     while staying winning).
+   - **Miss:** failing to punish an error, or missing a forced mate. That means leaving a mate in 1 on
+     the board, or giving up a mate altogether when it was short (mate in 3 or less) or when what's left
+     isn't crushing.
 
-   Accuracy uses lichess's formula.
+   chess.com's own labels change between two reviews of the same game: about 7 in 10 stay the same.
+   On those 44 games ours match chess.com's about 6 times in 10.
 3. **Facts:** static exchange evaluation (SEE), hanging pieces, tactic detectors (fork, pin, skewer,
    discovered attack, double check and more) confirmed on the engine line, named mate patterns,
    null-move threat searches ("what was your opponent threatening?"), positional comparisons, clock

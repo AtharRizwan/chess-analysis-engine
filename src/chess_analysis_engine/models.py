@@ -15,7 +15,8 @@ from pydantic import BaseModel, Field
 # 2: explanations carry retry hints.
 # 3: Brilliant needs a sacrifice the move itself makes; Great excludes obvious only-moves.
 # 4: labels on a curve fitted to chess.com; losing a forced mate is a Miss; Great = punishing an error.
-REVIEW_VERSION = 4
+# 5: refitted on 44 games of chess.com labels (curve, Good/Inaccuracy boundary, Great), narrower Miss.
+REVIEW_VERSION = 5
 
 Color = Literal["white", "black"]
 Phase = Literal["opening", "middlegame", "endgame"]

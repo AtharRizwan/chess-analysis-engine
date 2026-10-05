@@ -70,12 +70,18 @@ def test_losing_a_forced_mate_is_a_miss():
 
 
 def test_missed_mate_detection():
-    assert missed_mate("white", Score(mate=1), Score(mate=2))  # mate in 1 became mate in 2
-    assert missed_mate("white", Score(mate=3), Score(cp=1100))  # mate gone, still winning
+    # Like chess.com: a mate in 1 left on the board is a miss, even if a slower mate remains...
+    assert missed_mate("white", Score(mate=1), Score(mate=2))
+    # ...but a mate in 2 or 3 that just takes a little longer isn't.
+    assert not missed_mate("white", Score(mate=3), Score(mate=5))
     assert not missed_mate("white", Score(mate=3), Score(mate=2))  # on the shortest path
-    assert not missed_mate("white", Score(mate=1), Score(result="1-0"))  # delivered it
-    assert not missed_mate("white", Score(mate=6), Score(mate=7))  # long mates may take a detour
+    # A short mate gone altogether is a miss, however winning you still are.
+    assert missed_mate("white", Score(mate=3), Score(cp=1100))
     assert missed_mate("black", Score(mate=-2), Score(cp=-900))  # Black's mate, from White's side
+    # A long mate given up for a still-crushing position isn't; for anything less, it is.
+    assert not missed_mate("white", Score(mate=6), Score(cp=1200))
+    assert missed_mate("white", Score(mate=6), Score(cp=700))
+    assert not missed_mate("white", Score(mate=1), Score(result="1-0"))  # delivered it
     assert not missed_mate("white", Score(mate=-2), Score(mate=-1))  # being mated isn't "missing" one
 
 

@@ -12,13 +12,13 @@ from dataclasses import dataclass
 from chess_analysis_engine.models import Classification
 
 EXCELLENT = 0.02
-GOOD = 0.05
+GOOD = 0.04  # chess.com's table says 0.05; on our label curve 0.04 matches its reviews best
 INACCURACY = 0.10
 MISTAKE = 0.20
 
 # "Great" is either the best move right after the opponent's error that cost them at least this much
 # (finding the punishment, like chess.com's "great")...
-GREAT_PUNISH_LOSS = 0.10
+GREAT_PUNISH_LOSS = 0.15
 # ...or a hard only-move: the best move, and the next best is at least this much worse...
 ONLY_MOVE_GAP = 0.10
 # ...found while the game was still in the balance (an only-move that merely keeps a won game won

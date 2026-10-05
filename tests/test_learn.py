@@ -51,7 +51,7 @@ def line(uci, san, cp):
 
 def review() -> GameReview:
     fork = Fact(id="f1", kind="allows_tactic", motif="fork", importance=78)
-    alts = [line("g8f6", "Nf6", -40), line("e7e5", "e5", -32), line("d7d5", "d5", 0)]
+    alts = [line("g8f6", "Nf6", -40), line("e7e5", "e5", -32), line("d7d5", "d5", 30)]
     moves = [
         move(1, "white", "e4", "e2e4", "book", 0.0),
         move(2, "black", "f6", "f7f6", "blunder", 0.3, facts=[fork], alternatives=alts),
@@ -65,7 +65,7 @@ def review() -> GameReview:
 
 def test_accepted_moves_are_the_lines_close_to_best():
     blunder = review().moves[1]
-    # Black to move, best first: -32 centipawns (White's view) is within 0.02 expected points of -40; 0 isn't.
+    # Black to move, best first: -32 centipawns (White's view) is within 0.02 expected points of -40; +30 isn't.
     assert accepted_moves(blunder) == ["g8f6", "e7e5"]
 
 
