@@ -131,6 +131,10 @@ MIGRATIONS: list[str] = [
         created_at TEXT NOT NULL
     );
     """,
+    # 6 — how each coach call was made: the API (billed per token) or Claude Code (the user's Claude plan)
+    """
+    ALTER TABLE coach_usage ADD COLUMN backend TEXT NOT NULL DEFAULT 'api';
+    """,
 ]
 
 
@@ -373,11 +377,12 @@ class Database:
             (key, model, payload, utcnow()),
         )
 
-    def log_coach_usage(self, model: str, outcome: str, usage: dict[str, int]) -> None:
+    def log_coach_usage(self, model: str, outcome: str, usage: dict[str, int], backend: str = "api") -> None:
         self.conn.execute(
-            """INSERT INTO coach_usage (model, outcome, input_tokens, output_tokens, cache_read_tokens,
-                   cache_write_tokens, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            """INSERT INTO coach_usage (backend, model, outcome, input_tokens, output_tokens,
+                   cache_read_tokens, cache_write_tokens, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
             (
+                backend,
                 model,
                 outcome,
                 usage.get("input_tokens", 0),
@@ -389,12 +394,12 @@ class Database:
         )
 
     def coach_usage(self) -> list[dict[str, Any]]:
-        """Totals per model: calls, narrations rejected by the checks, and tokens."""
+        """Totals per backend and model: calls, narrations rejected by the checks, and tokens."""
         rows = self.conn.execute(
-            """SELECT model, COUNT(*) AS calls, SUM(outcome != 'ok') AS rejected,
+            """SELECT backend, model, COUNT(*) AS calls, SUM(outcome != 'ok') AS rejected,
                    SUM(input_tokens) AS input_tokens, SUM(output_tokens) AS output_tokens,
                    SUM(cache_read_tokens) AS cache_read_tokens, SUM(cache_write_tokens) AS cache_write_tokens
-               FROM coach_usage GROUP BY model ORDER BY model"""
+               FROM coach_usage GROUP BY backend, model ORDER BY backend, model"""
         ).fetchall()
         return [dict(r) for r in rows]
 

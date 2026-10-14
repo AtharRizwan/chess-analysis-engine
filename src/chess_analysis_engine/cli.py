@@ -52,6 +52,15 @@ def cmd_doctor(_: argparse.Namespace) -> int:
         f"Claude coach (optional): sdk {'installed' if coach else 'not installed'}, "
         f"credentials {'found' if key else 'not set'}"
     )
+    from chess_analysis_engine.explain.coach_cli import make_cli_client
+    from chess_analysis_engine.explain.coach_llm import CoachError
+
+    try:
+        make_cli_client()
+        claude_code = "ready"
+    except CoachError as exc:
+        claude_code = str(exc)
+    print(f"Claude coach on your Claude plan, through Claude Code (optional): {claude_code}")
     return 0 if ok else 1
 
 

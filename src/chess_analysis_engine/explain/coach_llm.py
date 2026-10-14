@@ -10,7 +10,8 @@ checked against the position before anyone sees it:
 
 A reply that fails gets one correction round. If that fails too, the template explanation is used.
 The `anthropic` package is an optional extra (`uv sync --extra coach`); nothing else imports this module's
-dependencies, so the app works the same without it.
+dependencies, so the app works the same without it. The coach can also run through Claude Code on the
+user's Claude subscription instead of an API key (`coach_cli`).
 """
 
 from __future__ import annotations
@@ -100,7 +101,7 @@ class Narration(BaseModel):
 
 
 class CoachError(Exception):
-    """The Claude API couldn't be used; `status` is the HTTP status to report."""
+    """Claude couldn't be used (through the API or Claude Code); `status` is the HTTP status to report."""
 
     def __init__(self, message: str, status: int = 502):
         super().__init__(message)
@@ -598,6 +599,8 @@ def _create(client: Any, model: str, effort: str, messages: list[dict[str, Any]]
         kwargs["fallbacks"] = "default"
     try:
         return client.beta.messages.create(**kwargs)
+    except CoachError:
+        raise  # the Claude Code backend's errors already say what's wrong
     except Exception as exc:  # map the SDK's typed errors to messages the UI can show
         raise _api_error(exc) from exc
 
@@ -647,6 +650,7 @@ def narrate_move(
     client: Any,
     model: str,
     effort: str,
+    backend: str = "api",
     db: Any | None = None,
     refresh: bool = False,
 ) -> Narration:
@@ -676,8 +680,9 @@ def narrate_move(
         note, failure = _read_note(response)
         problems = [failure] if failure else check_note(note, grounding)  # type: ignore[arg-type]
         log.info(
-            "coach %s ply %s attempt %d: in=%d out=%d cache_read=%d cache_write=%d problems=%d",
+            "coach %s via %s ply %s attempt %d: in=%d out=%d cache_read=%d cache_write=%d problems=%d",
             model,
+            backend,
             move.ply,
             attempt + 1,
             call_usage.input_tokens,
@@ -687,7 +692,7 @@ def narrate_move(
             len(problems),
         )
         if db is not None:
-            db.log_coach_usage(model, "ok" if not problems else "rejected", call_usage.model_dump())
+            db.log_coach_usage(model, "ok" if not problems else "rejected", call_usage.model_dump(), backend)
         if not problems and note is not None:
             narration = Narration(
                 explanation=to_explanation(note, move, template), source="coach", model=model, usage=usage

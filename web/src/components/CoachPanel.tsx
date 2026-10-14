@@ -26,7 +26,7 @@ const DIFFICULTY: Record<string, string> = {
 };
 
 // With the coach voice on, these moves are narrated as soon as they're shown; others on request
-// (each narration is a paid API call).
+// (each narration is a call to Claude, paid per token or counted toward your Claude plan).
 const AUTO_NARRATE = new Set(["inaccuracy", "mistake", "miss", "blunder", "great", "brilliant"]);
 
 type CoachResult = { key: string; narration?: Narration; error?: string };

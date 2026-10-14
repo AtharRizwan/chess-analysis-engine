@@ -9,6 +9,8 @@ from pydantic import BaseModel, Field
 from chess_analysis_engine.models import Color, MoveReview
 
 PresetName = Literal["quick", "standard", "deep"]
+# How the coach reaches Claude: your Anthropic API key, or your Claude plan through Claude Code.
+CoachBackend = Literal["api", "claude_code"]
 
 
 class Settings(BaseModel):
@@ -18,6 +20,7 @@ class Settings(BaseModel):
     threats: bool = True  # null-move threat searches ("what did my opponent threaten?")
     tablebase: bool = True  # look up endgames with 7 pieces or fewer online (lichess)
     coach_enabled: bool = False  # optional Claude narration
+    coach_backend: CoachBackend = "api"
     coach_model: str = "claude-opus-5-5"
     coach_effort: Literal["low", "medium", "high"] = "medium"
 
@@ -101,6 +104,7 @@ class NarrateRequest(BaseModel):
 
 
 class CoachUsage(BaseModel):
+    backend: CoachBackend
     model: str
     calls: int
     rejected: int  # replies that failed the grounding checks (each was retried or replaced)
@@ -108,13 +112,14 @@ class CoachUsage(BaseModel):
     output_tokens: int
     cache_read_tokens: int
     cache_write_tokens: int
-    cost_usd: float | None  # estimate from list prices; None for models without a known price
+    cost_usd: float | None  # estimate from API list prices; None on a Claude plan or for unpriced models
 
 
 class CoachStatus(BaseModel):
     enabled: bool
     ready: bool  # turned on and usable right now
+    backend: CoachBackend
     model: str
     effort: str
-    problem: str | None = None  # why it can't be used: missing package or credentials
+    problem: str | None = None  # why it can't be used: missing package, credentials or Claude Code
     usage: list[CoachUsage] = Field(default_factory=list)

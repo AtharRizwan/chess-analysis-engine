@@ -92,10 +92,25 @@ never named.
 
 ## Optional: Claude coach
 
-```sh
-uv sync --extra coach
-ANTHROPIC_API_KEY=... uv run chess-analysis serve
-```
+The coach runs on your own Anthropic API key or on your Claude subscription. Pick one under "Coach runs
+on" in Settings.
+
+- **API key**, billed per token (a few cents per narrated move with the default model):
+
+  ```sh
+  uv sync --extra coach
+  ANTHROPIC_API_KEY=... uv run chess-analysis serve
+  ```
+
+- **Claude subscription (Pro or Max), through Claude Code:** install
+  [Claude Code](https://code.claude.com) and sign in with your Claude account. The app runs `claude -p`
+  for each narration, so narrations count toward your plan's usage limits like any other Claude Code use.
+  - Claude Code does the signing in; the app never sees your login. This is meant for your own use on
+    your own machine.
+  - Each call runs in safe mode (no CLAUDE.md, hooks, plugins or MCP servers), with no tools, the coach's
+    own system prompt and JSON schema, and no saved session.
+  - An `ANTHROPIC_API_KEY` in the server's environment is not passed on, so the call uses your plan.
+  - `uv run chess-analysis doctor` says whether Claude Code is ready.
 
 Then turn the coach on in Settings, and use **✦ Coach voice** on any move. Key moments and mistakes are
 narrated automatically; other moves have an "Ask the coach" button. The default model is
@@ -110,12 +125,12 @@ narrated automatically; other moves have an "Ask the coach" button. The default 
   - a mistake's better move must be the engine's move.
 - A reply that fails gets one correction round. If it fails again, the standard explanation is shown
   with a note saying why. Coach text is marked "✦ AI", and the facts and lines always stay visible.
-- Narrations are cached, so each move is paid for once. Token usage and an estimated cost are shown in
-  Settings.
-- The system prompt is cached (prompt caching). Requests use server-side refusal fallback
+- Narrations are cached, so each move is narrated once, whichever way the coach runs. Settings shows
+  the calls so far, with an estimated cost for the API-key calls.
+- On the API, the system prompt is cached (prompt caching) and requests use server-side refusal fallback
   (`fallbacks: "default"`, beta `server-side-fallback-2026-07-01`), which a chess review shouldn't need.
 
-Without the extra package or an API key, everything else works exactly the same.
+Without the coach, everything else works exactly the same.
 
 ## Development
 

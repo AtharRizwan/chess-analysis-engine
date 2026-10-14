@@ -9,6 +9,7 @@ from chess_analysis_engine.api.jobs import Job, JobManager
 from chess_analysis_engine.api.schemas import GameSummary, Settings
 from chess_analysis_engine.config import PRESETS
 from chess_analysis_engine.engine.pool import EnginePool
+from chess_analysis_engine.explain.coach_cli import make_cli_client
 from chess_analysis_engine.explain.coach_llm import make_client
 from chess_analysis_engine.learn.drills import drills_from_review
 from chess_analysis_engine.learn.insights import index_rows, review_stats
@@ -25,7 +26,7 @@ class AppState:
     db: Database
     review_pool: EnginePool | None = None  # many single-threaded engines for whole-game reviews
     interactive_pool: EnginePool | None = None  # a couple of engines for "why not?" questions
-    coach_client: Any = None  # Anthropic client for the optional coach, created on first use
+    coach_clients: dict[str, Any] = field(default_factory=dict)  # per coach backend, created on first use
     jobs: JobManager = field(init=False)
 
     def __post_init__(self) -> None:
@@ -44,10 +45,11 @@ class AppState:
         return settings
 
     def coach(self) -> Any:
-        """The Anthropic client; raises CoachError when the package or credentials are missing."""
-        if self.coach_client is None:
-            self.coach_client = make_client()
-        return self.coach_client
+        """The client for the coach backend chosen in Settings; raises CoachError when it can't be used."""
+        backend = self.settings().coach_backend
+        if backend not in self.coach_clients:
+            self.coach_clients[backend] = make_cli_client() if backend == "claude_code" else make_client()
+        return self.coach_clients[backend]
 
     def game_summary(self, row: dict) -> GameSummary:
         fields = {k: v for k, v in row.items() if k in GameSummary.model_fields}

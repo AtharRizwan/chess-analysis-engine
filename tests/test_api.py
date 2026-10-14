@@ -26,9 +26,9 @@ def test_health_and_settings(client):
     assert client.get("/api/health").json()["engine"] is None
     settings = client.get("/api/settings").json()
     assert settings["preset"] == "standard" and "learn_mode" not in settings
-    settings["chesscom_username"] = "AtharxRizwan"
-    assert client.put("/api/settings", json=settings).json()["chesscom_username"] == "AtharxRizwan"
-    assert client.get("/api/settings").json()["chesscom_username"] == "AtharxRizwan"
+    settings["chesscom_username"] = "example_user"
+    assert client.put("/api/settings", json=settings).json()["chesscom_username"] == "example_user"
+    assert client.get("/api/settings").json()["chesscom_username"] == "example_user"
 
 
 def test_import_pgn_list_and_pick_side(client, fixtures):

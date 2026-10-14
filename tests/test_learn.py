@@ -65,7 +65,7 @@ def review() -> GameReview:
 
 def test_accepted_moves_are_the_lines_close_to_best():
     blunder = review().moves[1]
-    # Black to move, best first: -32 centipawns (White's view) is within 0.02 expected points of -40; +30 isn't.
+    # Black to move, best first: -32cp (White's view) is within 0.02 expected points of -40; +30 isn't.
     assert accepted_moves(blunder) == ["g8f6", "e7e5"]
 
 

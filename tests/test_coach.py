@@ -1,8 +1,11 @@
-"""The Claude coach's grounding checks, retry and fallback, with a fake client (no network, no API key)."""
+"""The Claude coach's grounding checks, retry and fallback, with a fake client (no network, no API key)
+and a fake Claude Code (no subprocess)."""
 
 from __future__ import annotations
 
 import json
+import shutil
+import subprocess
 from types import SimpleNamespace
 
 import chess
@@ -11,8 +14,12 @@ from fastapi.testclient import TestClient
 
 from chess_analysis_engine.api.app import create_app
 from chess_analysis_engine.api.state import AppState
+from chess_analysis_engine.explain.coach_cli import ClaudeCodeClient, make_cli_client
 from chess_analysis_engine.explain.coach_llm import (
+    COACH_SCHEMA,
     FALLBACK_BETA,
+    SYSTEM_PROMPT,
+    CoachError,
     CoachNote,
     Grounding,
     build_payload,
@@ -286,7 +293,7 @@ def test_cost_estimate():
 
 def test_coach_api(db, move):
     client = FakeClient(reply(GOOD))
-    state = AppState(db=db, coach_client=client)
+    state = AppState(db=db, coach_clients={"api": client})
     with TestClient(create_app(state)) as http:
         status = http.get("/api/coach/status").json()
         assert status["enabled"] is False and status["ready"] is False and status["problem"] is None
@@ -301,7 +308,7 @@ def test_coach_api(db, move):
         assert http.post("/api/coach/narrate", json=body).json()["cached"] is True
 
         usage = http.get("/api/coach/status").json()["usage"]
-        assert usage[0]["calls"] == 1 and usage[0]["cost_usd"] > 0
+        assert usage[0]["backend"] == "api" and usage[0]["calls"] == 1 and usage[0]["cost_usd"] > 0
 
 
 def test_coach_without_credentials(db, move, monkeypatch, tmp_path):
@@ -317,3 +324,149 @@ def test_coach_without_credentials(db, move, monkeypatch, tmp_path):
         body = {"move": move.model_dump(mode="json"), "user_color": "black"}
         response = http.post("/api/coach/narrate", json=body)
         assert response.status_code == 503 and "ANTHROPIC_API_KEY" in response.json()["detail"]
+
+
+# --- the Claude Code backend, with a fake `claude` command ----------------------------------------
+
+
+def cli_result(note: dict | None = GOOD, **changes: object) -> str:
+    """What `claude -p --output-format json --json-schema ...` prints."""
+    usage = {
+        "input_tokens": 1500,
+        "output_tokens": 400,
+        "cache_read_input_tokens": 5000,
+        "cache_creation_input_tokens": 0,
+    }
+    result = {"type": "result", "subtype": "success", "is_error": False, "result": "", "usage": usage}
+    return json.dumps({**result, "structured_output": note, **changes})
+
+
+class FakeClaude:
+    """Stands in for `subprocess.run` on the `claude` command: returns or raises the given outputs."""
+
+    def __init__(self, *outputs: str | subprocess.CompletedProcess | Exception):
+        self.outputs = list(outputs)
+        self.calls: list[dict] = []
+
+    def __call__(self, argv: list[str], **kwargs: object) -> subprocess.CompletedProcess:
+        self.calls.append({"argv": argv, **kwargs})
+        output = self.outputs.pop(0)
+        if isinstance(output, Exception):
+            raise output
+        if isinstance(output, str):
+            return subprocess.CompletedProcess(argv, 0, stdout=output, stderr="")
+        return output
+
+
+def narrate_with(claude: FakeClaude, move: MoveReview, tmp_path, db=None):
+    client = ClaudeCodeClient("/usr/bin/claude", run=claude, cwd=tmp_path)
+    return narrate_move(
+        move, "black", client=client, model="claude-opus-5-5", effort="medium", backend="claude_code", db=db
+    )
+
+
+def test_claude_code_narrates_through_claude_p(move, db, tmp_path, monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+    monkeypatch.setenv("CLAUDECODE", "1")
+    claude = FakeClaude(cli_result())
+    result = narrate_with(claude, move, tmp_path, db)
+    assert result.source == "coach" and result.explanation.headline == GOOD["headline"]
+    assert result.usage.input_tokens == 1500 and result.usage.cache_read_tokens == 5000
+
+    (call,) = claude.calls
+    argv = call["argv"]
+
+    def flag(name: str) -> str:
+        return argv[argv.index(name) + 1]
+
+    assert argv[:2] == ["/usr/bin/claude", "-p"]
+    assert flag("--output-format") == "json"
+    assert json.loads(flag("--json-schema")) == COACH_SCHEMA
+    assert flag("--system-prompt") == SYSTEM_PROMPT
+    assert flag("--model") == "claude-opus-5-5" and flag("--effort") == "medium"
+    assert flag("--tools") == ""  # no tools: Claude can only write the note
+    assert {"--safe-mode", "--no-chrome", "--no-session-persistence"} <= set(argv)
+    assert json.loads(call["input"]) == json.loads(json.dumps(build_payload(move, "black")))
+    # The subscription is used, not an API key the server was started with; nested sessions are allowed.
+    assert "ANTHROPIC_API_KEY" not in call["env"] and "CLAUDECODE" not in call["env"]
+    assert call["cwd"] == tmp_path
+
+    (usage,) = db.coach_usage()
+    assert usage["backend"] == "claude_code" and usage["calls"] == 1
+
+
+def test_claude_code_correction_round_quotes_the_reply(move, tmp_path):
+    bad = {**GOOD, "why": "Your knight on d4 was the only defender."}
+    claude = FakeClaude(cli_result(bad), cli_result())
+    assert narrate_with(claude, move, tmp_path).source == "coach"
+    retry = claude.calls[1]["input"]
+    assert retry.startswith(claude.calls[0]["input"])
+    assert f"Your previous reply:\n{json.dumps(bad)}" in retry and "no such knight on d4" in retry
+
+
+@pytest.mark.parametrize(
+    ("output", "status", "expected"),
+    [
+        (cli_result(None, is_error=True, result="Not logged in · Please run /login"), 401, "isn't signed in"),
+        (
+            cli_result(
+                None, is_error=True, api_error_status=429, result="You've hit your limit · resets 5pm"
+            ),
+            429,
+            "resets 5pm",
+        ),
+        (
+            cli_result(None, is_error=True, api_error_status=404, result="model not found"),
+            400,
+            "Unknown model",
+        ),
+        (
+            subprocess.CompletedProcess([], 1, stdout="", stderr="error: unknown option '--safe-mode'"),
+            502,
+            "unknown option",
+        ),
+        (subprocess.TimeoutExpired("claude", 180), 504, "didn't answer"),
+        (FileNotFoundError("claude"), 503, "Couldn't start"),
+    ],
+)
+def test_claude_code_errors(move, tmp_path, output, status, expected):
+    with pytest.raises(CoachError) as caught:
+        narrate_with(FakeClaude(output), move, tmp_path)
+    assert caught.value.status == status and expected in str(caught.value)
+
+
+def test_claude_code_without_a_valid_note_uses_the_template(move, tmp_path):
+    output = {"type": "result", "subtype": "error_max_structured_output_retries", "is_error": True}
+    claude = FakeClaude(json.dumps({**output, "errors": ["schema mismatch"], "usage": {}}))
+    result = narrate_with(claude, move, tmp_path)
+    assert result.source == "template" and len(claude.calls) == 1
+    assert "no text" in result.problems[0]
+
+
+def test_finding_claude_code(monkeypatch):
+    monkeypatch.setattr(shutil, "which", lambda name: None)
+    with pytest.raises(CoachError, match="isn't installed"):
+        make_cli_client()
+    monkeypatch.setattr(shutil, "which", lambda name: "/usr/bin/claude")
+    with pytest.raises(CoachError, match="isn't signed in"):
+        make_cli_client(run=FakeClaude(json.dumps({"loggedIn": False})))
+    signed_in = FakeClaude(json.dumps({"loggedIn": True, "authMethod": "claude.ai"}))
+    assert make_cli_client(run=signed_in).executable == "/usr/bin/claude"
+    assert signed_in.calls[0]["argv"] == ["/usr/bin/claude", "auth", "status", "--json"]
+    # When the status can't be read (an older Claude Code, say), the first narration reports any problem.
+    assert make_cli_client(run=FakeClaude("error: unknown command 'auth'")).executable == "/usr/bin/claude"
+
+
+def test_coach_api_on_claude_code(db, move, tmp_path):
+    client = ClaudeCodeClient("/usr/bin/claude", run=FakeClaude(cli_result()), cwd=tmp_path)
+    state = AppState(db=db, coach_clients={"claude_code": client})
+    with TestClient(create_app(state)) as http:
+        settings = http.get("/api/settings").json()
+        assert settings["coach_backend"] == "api"
+        http.put("/api/settings", json={**settings, "coach_enabled": True, "coach_backend": "claude_code"})
+        status = http.get("/api/coach/status").json()
+        assert status["ready"] is True and status["backend"] == "claude_code"
+        body = {"move": move.model_dump(mode="json"), "user_color": "black"}
+        assert http.post("/api/coach/narrate", json=body).json()["source"] == "coach"
+        (usage,) = http.get("/api/coach/status").json()["usage"]
+        assert usage["backend"] == "claude_code" and usage["calls"] == 1 and usage["cost_usd"] is None

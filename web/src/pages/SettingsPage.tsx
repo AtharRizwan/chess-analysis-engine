@@ -4,22 +4,26 @@ import { refreshCoachStatus, useCoachStatus } from "../lib/coach";
 
 function CoachState({ status, enabled }: { status: CoachStatus | null; enabled: boolean }) {
   if (!status) return null;
-  const calls = status.usage?.reduce((n, u) => n + u.calls, 0) ?? 0;
-  const known = status.usage?.every((u) => u.cost_usd !== null && u.cost_usd !== undefined);
-  const cost = status.usage?.reduce((n, u) => n + (u.cost_usd ?? 0), 0) ?? 0;
+  const usage = status.usage ?? [];
+  const api = usage.filter((u) => u.backend === "api");
+  const apiCalls = api.reduce((n, u) => n + u.calls, 0);
+  const planCalls = usage.filter((u) => u.backend === "claude_code").reduce((n, u) => n + u.calls, 0);
+  const known = api.every((u) => u.cost_usd !== null && u.cost_usd !== undefined);
+  const cost = api.reduce((n, u) => n + (u.cost_usd ?? 0), 0);
+  const calls = [
+    apiCalls > 0 && `${apiCalls} on your API key${known ? ` (about $${cost.toFixed(2)})` : ""}`,
+    planCalls > 0 && `${planCalls} on your Claude plan`,
+  ].filter(Boolean);
   return (
     <div className="muted small">
       {status.problem
         ? status.problem
         : enabled
           ? "Ready. Use “✦ Coach voice” on any move."
-          : "Anthropic credentials found."}
-      {calls > 0 && (
-        <>
-          {" "}
-          · {calls} {calls === 1 ? "call" : "calls"} so far{known ? `, about $${cost.toFixed(2)}` : ""}
-        </>
-      )}
+          : status.backend === "claude_code"
+            ? "Claude Code is signed in."
+            : "Anthropic credentials found."}
+      {calls.length > 0 && <> · Calls so far: {calls.join(", ")}</>}
     </div>
   );
 }
@@ -82,6 +86,15 @@ export function SettingsPage() {
           </label>
           <CoachState status={coach} enabled={settings.coach_enabled ?? false} />
         </div>
+        <label htmlFor="coach-backend">Coach runs on</label>
+        <select
+          id="coach-backend"
+          value={settings.coach_backend ?? "api"}
+          onChange={(e) => update({ coach_backend: e.target.value as Settings["coach_backend"] })}
+        >
+          <option value="api">Your Anthropic API key (billed per token)</option>
+          <option value="claude_code">Your Claude subscription, through Claude Code</option>
+        </select>
         <label htmlFor="coach-model">Coach model</label>
         <input id="coach-model" value={settings.coach_model ?? ""} onChange={(e) => update({ coach_model: e.target.value })} />
         <label htmlFor="coach-effort">Coach effort</label>
@@ -100,9 +113,11 @@ export function SettingsPage() {
         {status && <span className="muted">{status}</span>}
       </div>
       <p className="muted small">
-        Your usernames are used to recognise your side in imported games. The coach uses your own Anthropic API
-        key: start the server with <code>ANTHROPIC_API_KEY</code> set. With the default model a narrated move costs
-        a few cents, and each one is cached so it's only paid for once.
+        Your usernames are used to recognise your side in imported games. The coach runs on your own Anthropic API
+        key (start the server with <code>ANTHROPIC_API_KEY</code> set; with the default model a narrated move costs
+        a few cents) or on your Claude subscription through Claude Code (install Claude Code and sign in with your
+        Claude account; narrations count toward your plan's usage limits). Each narration is cached, so a move is
+        only narrated once.
       </p>
     </div>
   );

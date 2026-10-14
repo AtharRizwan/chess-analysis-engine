@@ -451,6 +451,11 @@ export interface components {
             enabled: boolean;
             /** Ready */
             ready: boolean;
+            /**
+             * Backend
+             * @enum {string}
+             */
+            backend: "api" | "claude_code";
             /** Model */
             model: string;
             /** Effort */
@@ -462,6 +467,11 @@ export interface components {
         };
         /** CoachUsage */
         CoachUsage: {
+            /**
+             * Backend
+             * @enum {string}
+             */
+            backend: "api" | "claude_code";
             /** Model */
             model: string;
             /** Calls */
@@ -660,7 +670,7 @@ export interface components {
         GameReview: {
             /**
              * Version
-             * @default 2
+             * @default 5
              */
             version: number;
             /** Headers */
@@ -1022,6 +1032,12 @@ export interface components {
              * @default false
              */
             coach_enabled: boolean;
+            /**
+             * Coach Backend
+             * @default api
+             * @enum {string}
+             */
+            coach_backend: "api" | "claude_code";
             /**
              * Coach Model
              * @default claude-opus-5-5

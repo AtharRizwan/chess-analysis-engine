@@ -24,16 +24,19 @@ def status(state: StateDep) -> CoachStatus:
         tokens = Usage(**{k: row[k] or 0 for k in Usage.model_fields})
         usage.append(
             CoachUsage(
+                backend=row["backend"],
                 model=row["model"],
                 calls=row["calls"],
                 rejected=row["rejected"] or 0,
                 **tokens.model_dump(),
-                cost_usd=estimate_cost(row["model"], tokens),
+                # Calls through Claude Code count toward the user's Claude plan, not an API bill.
+                cost_usd=estimate_cost(row["model"], tokens) if row["backend"] == "api" else None,
             )
         )
     return CoachStatus(
         enabled=settings.coach_enabled,
         ready=settings.coach_enabled and problem is None,
+        backend=settings.coach_backend,
         model=settings.coach_model,
         effort=settings.coach_effort,
         problem=problem,
@@ -53,6 +56,7 @@ def narrate(body: NarrateRequest, state: StateDep) -> Narration:
             client=state.coach(),
             model=settings.coach_model,
             effort=settings.coach_effort,
+            backend=settings.coach_backend,
             db=state.db,
             refresh=body.refresh,
         )
