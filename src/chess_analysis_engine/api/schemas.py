@@ -6,7 +6,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from chess_analysis_engine.models import Color, MoveReview
+from chess_analysis_engine.models import Color, MoveReview, Score
 
 PresetName = Literal["quick", "standard", "deep"]
 # How the coach reaches Claude: your Anthropic API key, or your Claude plan through Claude Code.
@@ -87,6 +87,20 @@ class ExplainRequest(BaseModel):
     move: str
     user_color: Color | None = None
     preset: PresetName | None = None
+
+
+class EvaluateRequest(BaseModel):
+    """A line to evaluate: `fen` and the position after each of `moves` (UCI)."""
+
+    fen: str
+    moves: list[str] = Field(default_factory=list, max_length=40)
+
+
+class PositionScore(BaseModel):
+    """One position's evaluation: the engine's score and White's winning chances in %."""
+
+    score: Score
+    win: float
 
 
 class Health(BaseModel):

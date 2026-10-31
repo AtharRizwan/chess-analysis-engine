@@ -56,6 +56,18 @@ export function positionsAlong(fen: string, uci: string[]): string[] {
   return fens;
 }
 
+/**
+ * The game plies a line's positions coincide with, while the line follows the game: entry `i` is the
+ * ply of the line's position `i`. Empty when the line doesn't start from a position of the game.
+ */
+export function gamePliesAlong(startFen: string, uci: string[], gameFens: string[], gameUci: string[]): number[] {
+  const start = gameFens.indexOf(startFen);
+  if (start < 0) return [];
+  const plies = [start];
+  for (let i = 0; i < uci.length && gameUci[start + i] === uci[i]; i++) plies.push(start + i + 1);
+  return plies;
+}
+
 /** "14. Bd3 Qxb2 15. Rb1" from a start position and SAN moves. */
 export function numberLine(fen: string, sans: string[]): string {
   const setup = parseFen(fen).unwrap();

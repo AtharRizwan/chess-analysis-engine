@@ -8,6 +8,7 @@ import {
   type JobStatus,
   type LineRef,
   type MoveReview,
+  type PositionScore,
   type Side,
   watchJob,
 } from "../api/client";
@@ -18,7 +19,7 @@ import { EvalBar } from "../components/EvalBar";
 import { EvalGraph } from "../components/EvalGraph";
 import { GameSummary } from "../components/GameSummary";
 import { MoveList } from "../components/MoveList";
-import { numberLine, play, positionsAlong, squaresOf, uciFromDrag } from "../lib/chess";
+import { gamePliesAlong, numberLine, play, positionsAlong, squaresOf, uciFromDrag } from "../lib/chess";
 
 type View =
   | { kind: "game" }
@@ -50,6 +51,7 @@ export function ReviewPage({ gameId, initialPly }: { gameId: number; initialPly?
   const [ply, setPly] = useState(0);
   const [view, setView] = useState<View>({ kind: "game" });
   const [flipped, setFlipped] = useState(false);
+  const [lineEvals, setLineEvals] = useState<{ line: LineRef; evals: PositionScore[] } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -109,6 +111,25 @@ export function ReviewPage({ gameId, initialPly }: { gameId: number; initialPly?
     () => (view.kind === "line" ? positionsAlong(view.line.start_fen, view.line.uci) : []),
     [view],
   );
+  // Stepping through a line moves the eval bar: positions of the game keep the review's numbers,
+  // the others are evaluated once when the line opens.
+  const openLine = view.kind === "line" ? view.line : null;
+  const lineGamePlies = useMemo(
+    () => (openLine ? gamePliesAlong(openLine.start_fen, openLine.uci, fens, moves.map((m) => m.uci)) : []),
+    [openLine, fens, moves],
+  );
+  useEffect(() => {
+    if (!openLine) return;
+    let cancelled = false;
+    api
+      .evaluate(openLine.start_fen, openLine.uci)
+      .then((evals) => !cancelled && setLineEvals({ line: openLine, evals }))
+      .catch(() => undefined); // no engine: the bar keeps showing the game's evaluation
+    return () => {
+      cancelled = true;
+    };
+  }, [openLine]);
+
   const explorePositions = useMemo(
     () => (view.kind === "explore" && fens.length ? positionsAlong(fens[view.basePly], view.moves) : []),
     [view, fens],
@@ -228,8 +249,11 @@ export function ReviewPage({ gameId, initialPly }: { gameId: number; initialPly?
   let fen = fens[ply];
   let lastMove: [Key, Key] | undefined = ply ? squaresOf(moves[ply - 1].uci) : undefined;
   let annotations: Annotation[] = ply ? notGreen(moves[ply - 1].explanation?.annotations) : [];
-  let whiteWin = ply ? moves[ply - 1].win_after : moves[0]?.win_before ?? 50;
-  let score = ply ? moves[ply - 1].eval_after : moves[0]?.eval_before ?? null;
+  const evalAt = (p: number) =>
+    p
+      ? { whiteWin: moves[p - 1].win_after, score: moves[p - 1].eval_after }
+      : { whiteWin: moves[0]?.win_before ?? 50, score: moves[0]?.eval_before ?? null };
+  let { whiteWin, score } = evalAt(ply);
   let interactive = true;
   if (view.kind === "line") {
     fen = linePositions[view.index];
@@ -237,6 +261,10 @@ export function ReviewPage({ gameId, initialPly }: { gameId: number; initialPly?
     const next = view.line.uci[view.index];
     annotations = next ? [{ orig: next.slice(0, 2), dest: next.slice(2, 4), brush: "blue" }] : [];
     interactive = false;
+    const gamePly = lineGamePlies[view.index];
+    const evaluated = lineEvals?.line === view.line ? lineEvals.evals[view.index] : undefined;
+    if (gamePly !== undefined) ({ whiteWin, score } = evalAt(gamePly));
+    else if (evaluated) ({ win: whiteWin, score } = evaluated);
   } else if (view.kind === "explore") {
     fen = explorePositions.at(-1)!;
     lastMove = view.moves.length ? squaresOf(view.moves.at(-1)!) : view.basePly ? squaresOf(moves[view.basePly - 1].uci) : undefined;

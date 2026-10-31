@@ -8,6 +8,7 @@ export type Settings = S["Settings"];
 export type JobStatus = S["JobStatus"];
 export type Fact = S["Fact"];
 export type LineRef = S["LineRef"];
+export type PositionScore = S["PositionScore"];
 export type Annotation = S["Annotation"];
 export type Health = S["Health"];
 export type ImportResult = S["ImportResult"];
@@ -63,6 +64,7 @@ export const api = {
   review: (id: number) => request<GameReview>(`/api/games/${id}/review`),
   explain: (body: { fen: string; moves: string[]; move: string; user_color: Side | null }) =>
     request<MoveReview>("/api/explain", post(body)),
+  evaluate: (fen: string, moves: string[]) => request<PositionScore[]>("/api/evaluate", post({ fen, moves })),
   drillStats: () => request<DrillStats>("/api/drills/stats"),
   dueDrills: (theme?: string) =>
     request<DrillCard[]>(`/api/drills/due${theme ? `?theme=${encodeURIComponent(theme)}` : ""}`),

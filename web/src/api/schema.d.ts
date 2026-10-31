@@ -195,6 +195,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/evaluate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Evaluate
+         * @description Evaluate `fen` and the position after each move of the line, in order.
+         */
+        post: operations["evaluate_api_evaluate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/insights": {
         parameters: {
             query?: never;
@@ -573,6 +593,16 @@ export interface components {
             score: components["schemas"]["Score"];
             /** Depth */
             depth: number;
+        };
+        /**
+         * EvaluateRequest
+         * @description A line to evaluate: `fen` and the position after each of `moves` (UCI).
+         */
+        EvaluateRequest: {
+            /** Fen */
+            fen: string;
+            /** Moves */
+            moves?: string[];
         };
         /** Example */
         Example: {
@@ -978,6 +1008,15 @@ export interface components {
             name: string;
             /** Rating */
             rating?: number | null;
+        };
+        /**
+         * PositionScore
+         * @description One position's evaluation: the engine's score and White's winning chances in %.
+         */
+        PositionScore: {
+            score: components["schemas"]["Score"];
+            /** Win */
+            win: number;
         };
         /** ReviewRequest */
         ReviewRequest: {
@@ -1485,6 +1524,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MoveReview"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    evaluate_api_evaluate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EvaluateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PositionScore"][];
                 };
             };
             /** @description Validation Error */

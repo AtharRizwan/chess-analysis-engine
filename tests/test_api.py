@@ -2,6 +2,7 @@
 
 import time
 
+import chess
 import pytest
 from fastapi.testclient import TestClient
 
@@ -64,6 +65,7 @@ def test_errors_without_engine(client, fixtures):
         client.post("/api/explain", json={"fen": "8/8/8/8/8/8/8/8 w - - 0 1", "move": "e2e4"}).status_code
         == 503
     )
+    assert client.post("/api/evaluate", json={"fen": chess.STARTING_FEN, "moves": []}).status_code == 503
 
 
 @pytest.mark.engine
@@ -105,6 +107,19 @@ def test_review_flow_and_why_not(engine_client, fixtures):
         engine_client.post("/api/explain", json={"fen": start, "moves": history, "move": "e1e3"}).status_code
         == 400
     )
+
+
+@pytest.mark.engine
+def test_evaluate_line(engine_client):
+    # Scholar's mate: every position along the line, ending in checkmate.
+    line = ["e2e4", "e7e5", "d1h5", "b8c6", "f1c4", "g8f6", "h5f7"]
+    scores = engine_client.post("/api/evaluate", json={"fen": chess.STARTING_FEN, "moves": line}).json()
+    assert len(scores) == len(line) + 1
+    assert 40 < scores[0]["win"] < 70
+    assert scores[-1] == {"score": {"cp": None, "mate": None, "result": "1-0"}, "win": 100.0}
+    assert scores[-2]["score"]["mate"] == 1  # Qxf7# is on the board
+    illegal = engine_client.post("/api/evaluate", json={"fen": chess.STARTING_FEN, "moves": ["e2e5"]})
+    assert illegal.status_code == 400
 
 
 def test_outdated_reviews_are_redone(client, db, fixtures):
