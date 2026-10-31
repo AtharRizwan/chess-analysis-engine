@@ -1,5 +1,7 @@
 # chess-analysis-engine
 
+[![CI](https://github.com/AtharRizwan/chess-analysis-engine/actions/workflows/ci.yml/badge.svg)](https://github.com/AtharRizwan/chess-analysis-engine/actions/workflows/ci.yml)
+
 A local chess game review that explains **why**: why your move was bad (or good, or good but not best),
 what the better move actually achieves, and the general lesson to keep. It then turns your own
 mistakes into puzzles and shows which kinds of mistakes cost you the most.
@@ -143,6 +145,10 @@ npm --prefix web run test        # vitest
 npm --prefix web run gen:api     # regenerate TypeScript types from the API schema
 uv run python scripts/eval_motifs.py --per-theme 200   # tactic detector benchmark (downloads the puzzle DB)
 ```
+
+CI (`.github/workflows/ci.yml`) runs the same checks on every push to `main` and every pull request: lint, unit
+tests on Python 3.12 and 3.14, the Stockfish tests, the web build and tests, and a check that
+`web/src/api/schema.d.ts` matches the API.
 
 ## Credits and license
 
