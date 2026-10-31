@@ -60,8 +60,17 @@ export function useCoachVoice(): [boolean, (on: boolean) => void] {
 // Narrations already asked for in this page load (the server caches them across visits).
 const narrations = new Map<string, Promise<Narration>>();
 
+export function narrationKey(move: MoveReview, userColor: Side | null): string {
+  return `${move.fen_before}|${move.uci}|${userColor ?? ""}`;
+}
+
+/** Whether this move was already asked about in this page load (a failed request doesn't count). */
+export function wasNarrated(move: MoveReview, userColor: Side | null): boolean {
+  return narrations.has(narrationKey(move, userColor));
+}
+
 export function narrate(move: MoveReview, userColor: Side | null, refresh = false): Promise<Narration> {
-  const key = `${move.fen_before}|${move.uci}|${userColor ?? ""}`;
+  const key = narrationKey(move, userColor);
   let request = refresh ? undefined : narrations.get(key);
   if (!request) {
     request = api.narrate(move, userColor, refresh);
