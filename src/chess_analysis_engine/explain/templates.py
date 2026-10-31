@@ -22,6 +22,7 @@ from chess_analysis_engine.models import (
     Score,
     other,
 )
+from chess_analysis_engine.review.classify import BAD
 
 MAX_LINE = 8
 
@@ -41,6 +42,8 @@ MOTIF_NAMES = {
 WRONG = (
     "allows_mate",
     "stalemate",
+    "repetition",
+    "allows_repetition",
     "tablebase",
     "ignored_threat",
     "hangs_piece",
@@ -60,7 +63,15 @@ BETTER = (
     "best_defends",
     "best_creates_threat",
 )
-GOOD = ("checkmate", "forces_mate", "executes_tactic", "sacrifice", "only_move", "parries_threat")
+GOOD = (
+    "repetition",
+    "checkmate",
+    "forces_mate",
+    "executes_tactic",
+    "sacrifice",
+    "only_move",
+    "parries_threat",
+)
 
 
 class Voice:
@@ -331,6 +342,11 @@ _PRINCIPLES = {
 }
 
 
+def _earlier(d: dict[str, Any], intro: str) -> str:
+    """' (after 49. Kf1 and 51. Kf1)' for a repetition fact, '' when the moves aren't known."""
+    return f" ({intro} {and_join(d['earlier'])})" if d.get("earlier") else ""
+
+
 def sentence(f: Fact, v: Voice, m: MoveReview, subject: str | None = None) -> str:
     """One sentence for a fact. `subject` replaces the better move's name ("It", "It also")
     when a section title already names it."""
@@ -415,6 +431,21 @@ def sentence(f: Fact, v: Voice, m: MoveReview, subject: str | None = None) -> st
         )
     if f.kind == "stalemate":
         return "It's stalemate — a winning position turns into a draw."
+    if f.kind == "repetition":
+        if m.classification in BAD:
+            return (
+                f"{d['move']} repeats the position for the third time{_earlier(d, 'after')}, "
+                "so a winning game ends in a draw."
+            )
+        return (
+            f"{d['move']} repeats the position for the third time{_earlier(d, 'after')}, "
+            "so the game is drawn by repetition."
+        )
+    if f.kind == "allows_repetition":
+        return (
+            f"It lets {v.who(other(mover))} repeat the position a third time with {d['reply']}"
+            f"{_earlier(d, 'it already came up after')}, so the game ends in a draw by repetition."
+        )
     if f.kind == "positional":
         return _POSITIONAL.get(f.motif or "", lambda _: "The position becomes harder to play.")(d)
     if f.kind == "opening_principle":
@@ -469,6 +500,10 @@ def _headline(primary: Fact | None, m: MoveReview, v: Voice) -> str:
         return f"Turns a {d['before']} into a {d['after']}"
     if k == "stalemate":
         return "Stalemate throws away the win"
+    if k == "repetition":
+        return "Repeats a won position into a draw" if m.classification in BAD else "Draws by repetition"
+    if k == "allows_repetition":
+        return "Allows a draw by repetition"
     if k == "positional":
         return {
             "king_safety": "Weakens the king",
@@ -652,6 +687,10 @@ def _hints(m: MoveReview, facts: list[Fact]) -> tuple[list[str], str | None]:
         hints.append(f"Your move allowed a {name}. Find a move that keeps everything protected.")
     elif "allows_attack" in kinds or "best_defends" in kinds or "hangs_piece" in kinds:
         hints.append("Something of yours is about to be attacked. Find a move that keeps it safe.")
+    elif "allows_repetition" in kinds or "repetition" in kinds:
+        hints.append(
+            "This position has come up before. Is there a move that makes progress instead of repeating?"
+        )
     else:
         hints.append("Start with checks, captures and threats, for both sides.")
     focus = None

@@ -27,6 +27,8 @@ CAUSES = (
     "missed_win",
     "tablebase",
     "stalemate",
+    "allows_repetition",
+    "repetition",
     "positional",
     "opening_principle",
 )

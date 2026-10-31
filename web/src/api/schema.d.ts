@@ -670,7 +670,7 @@ export interface components {
         GameReview: {
             /**
              * Version
-             * @default 5
+             * @default 6
              */
             version: number;
             /** Headers */
@@ -989,7 +989,8 @@ export interface components {
          * @description An evaluation from White's point of view.
          *
          *     Exactly one of `cp`, `mate` or `result` is set. `mate` counts moves (positive: White
-         *     mates); `result` marks a finished game (checkmate, stalemate, insufficient material).
+         *     mates); `result` marks a finished game (checkmate, stalemate, insufficient material,
+         *     threefold repetition).
          */
         Score: {
             /** Cp */

@@ -96,6 +96,14 @@ LESSONS: dict[tuple[str, str | None], str] = {
         "When you're winning, check that your opponent still has a legal move after yours — "
         "especially when their king is boxed in."
     ),
+    ("allows_repetition", None): (
+        "When you're winning, keep count of repeated positions: the third time is a draw. Instead of "
+        "another check, bring a new piece into the attack."
+    ),
+    ("repetition", None): (
+        "A position seen for the third time is a draw. When you're ahead, vary your moves and make "
+        "progress rather than repeating."
+    ),
     ("positional", "king_safety"): (
         "Pawns in front of a castled king are its shield. Push them only with a good reason."
     ),
