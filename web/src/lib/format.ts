@@ -55,6 +55,8 @@ export const FACT_LABELS: Record<string, string> = {
   missed_win: "Missed win",
   tablebase: "Endgame",
   stalemate: "Stalemate",
+  repetition: "Repetition",
+  allows_repetition: "Allows repetition",
   positional: "Positional",
   opening_principle: "Opening principle",
   clock: "Clock",
@@ -117,6 +119,8 @@ const CAUSE_TEXT: Record<string, string> = {
   missed_win: "Missed a winning sequence",
   tablebase: "Endgame technique",
   stalemate: "Stalemated a won position",
+  allows_repetition: "Let a won game be drawn by repetition",
+  repetition: "Repeated a won position into a draw",
   accuracy: "No single clear reason",
 };
 const HANG_TEXT: Record<string, string> = {

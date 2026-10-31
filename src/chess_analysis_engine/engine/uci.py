@@ -27,7 +27,9 @@ def terminal_score(board: chess.Board) -> Score | None:
         return Score(result="0-1" if board.turn == chess.WHITE else "1-0")
     if board.is_stalemate() or board.is_insufficient_material():
         return Score(result="1/2-1/2")
-    if board.is_fivefold_repetition() or board.is_seventyfive_moves():
+    # Online games end on the third repetition, and Stockfish already scores a move into one as a
+    # draw, so the position itself must be one too.
+    if board.is_repetition(3) or board.is_seventyfive_moves():
         return Score(result="1/2-1/2")
     return None
 

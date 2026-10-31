@@ -16,7 +16,8 @@ from pydantic import BaseModel, Field
 # 3: Brilliant needs a sacrifice the move itself makes; Great excludes obvious only-moves.
 # 4: labels on a curve fitted to chess.com; losing a forced mate is a Miss; Great = punishing an error.
 # 5: refitted on 44 games of chess.com labels (curve, Good/Inaccuracy boundary, Great), narrower Miss.
-REVIEW_VERSION = 5
+# 6: a threefold repetition ends the game (scored a draw), and repetitions are explained.
+REVIEW_VERSION = 6
 
 Color = Literal["white", "black"]
 Phase = Literal["opening", "middlegame", "endgame"]
@@ -65,7 +66,8 @@ class Score(BaseModel):
     """An evaluation from White's point of view.
 
     Exactly one of `cp`, `mate` or `result` is set. `mate` counts moves (positive: White
-    mates); `result` marks a finished game (checkmate, stalemate, insufficient material).
+    mates); `result` marks a finished game (checkmate, stalemate, insufficient material,
+    threefold repetition).
     """
 
     cp: int | None = None

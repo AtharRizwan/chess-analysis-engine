@@ -282,6 +282,25 @@ def _stable_depth(best_by_depth: list[tuple[int, str]], best_uci: str) -> int:
     return depth
 
 
+def _position_key(board: chess.Board) -> tuple[str, chess.Color, chess.Bitboard, chess.Square | None]:
+    """What makes two positions "the same" for the repetition rule."""
+    ep = board.ep_square if board.has_legal_en_passant() else None
+    return board.board_fen(), board.turn, board.clean_castling_rights(), ep
+
+
+def _earlier_occurrences(board: chess.Board) -> list[str]:
+    """The earlier moves that reached `board`'s position, e.g. ['49. Kf1', '51. Kf1']."""
+    target = _position_key(board)
+    replay = board.root()
+    found: list[str] = []
+    for move in board.move_stack[:-1]:
+        name = label(replay, move)
+        replay.push(move)
+        if _position_key(replay) == target:
+            found.append(name)
+    return found
+
+
 def explain_move(
     inp: MoveInput,
     pool: EnginePool | None = None,
@@ -610,6 +629,28 @@ def explain_move(
     if after.is_stalemate() and inp.ep_loss > 0.2:
         out.add("stalemate", 92, actor=color_name(mover))
 
+    # --- repetition: online games end on the third one ------------------------------------
+    history = board.copy()
+    history.push(move)
+    if history.is_repetition(3):
+        out.add(
+            "repetition",
+            91 if bad else 52,
+            actor=color_name(mover),
+            data={"move": label(board, move), "earlier": _earlier_occurrences(history)},
+        )
+    elif bad and refutation.moves:
+        reply = refutation.moves[0]
+        history.push(reply)
+        if history.is_repetition(3):
+            out.add(
+                "allows_repetition",
+                91,
+                actor=color_name(opponent),
+                data={"reply": line_label(refutation, 0), "earlier": _earlier_occurrences(history)},
+                annotations=[_arrow(reply, "red")],
+            )
+
     # --- positional reasons, when nothing tactical explains the loss ---------------------
     tactical = out.has(
         "allows_mate",
@@ -622,6 +663,8 @@ def explain_move(
         "loses_material",
         "tablebase",
         "stalemate",
+        "repetition",
+        "allows_repetition",
         "missed_win",
     )
     if (bad or inp.classification in ("good", "excellent")) and best_line is not None and not tactical:

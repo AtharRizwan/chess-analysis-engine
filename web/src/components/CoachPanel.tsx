@@ -1,7 +1,7 @@
 import { useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { LineRef, MoveReview, Narration, Side } from "../api/client";
 import { moveLabel } from "../lib/chess";
-import { narrate, useCoachStatus, useCoachVoice } from "../lib/coach";
+import { narrate, narrationKey, useCoachStatus, useCoachVoice, wasNarrated } from "../lib/coach";
 import { buildIndex, contextFor } from "../lib/notation";
 import { BAD, chancesFor, FACT_LABELS, MOTIF_LABELS, pct } from "../lib/format";
 import { Badge } from "./Badge";
@@ -25,10 +25,6 @@ const DIFFICULTY: Record<string, string> = {
   hard: "The better move was hard to find, so focus on the lesson rather than the exact move.",
 };
 
-// With the coach voice on, these moves are narrated as soon as they're shown; others on request
-// (each narration is a call to Claude, paid per token or counted toward your Claude plan).
-const AUTO_NARRATE = new Set(["inaccuracy", "mistake", "miss", "blunder", "great", "brilliant"]);
-
 type CoachResult = { key: string; narration?: Narration; error?: string };
 
 function chips(move: MoveReview): string[] {
@@ -46,23 +42,21 @@ export function CoachPanel({ move, userColor, kicker, onShowLine, onTryAnother, 
   const [voice, setVoice] = useCoachVoice();
   const [askedKey, setAskedKey] = useState<string | null>(null);
   const [result, setResult] = useState<CoachResult | null>(null);
-  const moveKey = `${move.fen_before}|${move.uci}|${userColor ?? ""}`;
+  const moveKey = narrationKey(move, userColor);
   const ready = Boolean(status?.ready);
-  const wanted = ready && voice && (move.key_moment || AUTO_NARRATE.has(move.classification) || askedKey === moveKey);
+  // Only moves you asked about are narrated (each is a call to Claude, paid per token or counted
+  // toward your Claude plan); a move asked about earlier shows its narration again from the cache.
+  const wanted = ready && voice && (askedKey === moveKey || wasNarrated(move, userColor));
   const current = result?.key === moveKey ? result : null;
 
   useEffect(() => {
     if (!wanted || current) return;
     let cancelled = false;
-    // A short pause, so stepping quickly through the moves doesn't narrate every one passed.
-    const timer = setTimeout(() => {
-      narrate(move, userColor)
-        .then((narration) => !cancelled && setResult({ key: moveKey, narration }))
-        .catch((e: unknown) => !cancelled && setResult({ key: moveKey, error: e instanceof Error ? e.message : String(e) }));
-    }, 400);
+    narrate(move, userColor)
+      .then((narration) => !cancelled && setResult({ key: moveKey, narration }))
+      .catch((e: unknown) => !cancelled && setResult({ key: moveKey, error: e instanceof Error ? e.message : String(e) }));
     return () => {
       cancelled = true;
-      clearTimeout(timer);
     };
     // `move` itself is identified by moveKey: a new object for the same move needs no new request.
   }, [wanted, moveKey, Boolean(current)]);
