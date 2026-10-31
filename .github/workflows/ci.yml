@@ -1,0 +1,92 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  python:
+    name: Lint and unit tests (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.14"]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v10
+        with:
+          python-version: ${{ matrix.python-version }}
+      # --all-extras installs the optional coach dependency, so its tests run too.
+      - run: uv sync --locked --all-extras
+      - run: uv run ruff check src tests scripts
+      - run: uv run ruff format --check src tests scripts
+      - run: uv run pytest
+
+  engine:
+    name: Stockfish integration tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v10
+        with:
+          python-version: "3.14"
+      - name: Cache Stockfish
+        id: stockfish-cache
+        uses: actions/cache@v6
+        with:
+          path: bin/stockfish
+          key: stockfish-${{ runner.os }}-${{ hashFiles('scripts/get_stockfish.sh') }}
+      - name: Download Stockfish
+        if: steps.stockfish-cache.outputs.cache-hit != 'true'
+        run: scripts/get_stockfish.sh
+      - run: uv sync --locked
+      - run: uv run pytest -m engine
+
+  web:
+    name: Web build, tests and API types
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
+      # The API types in web/src/api/schema.d.ts are generated from the FastAPI schema.
+      - uses: astral-sh/setup-uv@v10
+        with:
+          python-version: "3.14"
+      - run: uv sync --locked
+        working-directory: .
+      - run: npm run gen:api
+      - name: Check generated API types are committed
+        run: |
+          if ! git diff --exit-code -- src/api/schema.d.ts; then
+            echo "::error file=web/src/api/schema.d.ts::API types are out of date. Run 'npm --prefix web run gen:api' and commit the result."
+            exit 1
+          fi
