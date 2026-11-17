@@ -1,10 +1,11 @@
 import { useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { LineRef, MoveReview, Narration, Side } from "../api/client";
 import { moveLabel } from "../lib/chess";
-import { narrate, narrationKey, useCoachStatus, useCoachVoice, wasNarrated } from "../lib/coach";
-import { buildIndex, contextFor } from "../lib/notation";
+import { narrate, narrationKey, useCoachChat, useCoachStatus, useCoachVoice, wasNarrated } from "../lib/coach";
+import { buildIndex, chatContext } from "../lib/notation";
 import { BAD, chancesFor, FACT_LABELS, MOTIF_LABELS, pct } from "../lib/format";
 import { Badge } from "./Badge";
+import { ChatComposer, ChatThreadView, suggestions } from "./CoachChat";
 import { BoardLinkContext, ChessText } from "./ChessText";
 
 type Props = {
@@ -68,15 +69,35 @@ export function CoachPanel({ move, userColor, kicker, onShowLine, onTryAnother, 
       .catch((e: unknown) => setResult({ key: moveKey, error: e instanceof Error ? e.message : String(e) }));
   };
 
-  // A new move starts at the top of the explanation (it scrolls inside the card on wide screens).
+  // Follow-up questions about this move (only when the coach can answer them).
+  const chat = useCoachChat(move, userColor, ready);
+  const chatLines = useMemo(() => chat.turns.flatMap((turn) => turn.lines ?? []), [chat.turns]);
+
+  // A new move starts at the top of the explanation (it scrolls inside the card on wide screens);
+  // a new question or answer brings the end of the conversation into view.
   const body = useRef<HTMLDivElement>(null);
+  const chatEnd = useRef<HTMLDivElement>(null);
+  const seen = useRef({ key: moveKey, loaded: chat.loaded, turns: chat.turns.length, pending: chat.pending });
   useEffect(() => {
     if (body.current) body.current.scrollTop = 0;
   }, [moveKey]);
+  useEffect(() => {
+    const before = seen.current;
+    seen.current = { key: moveKey, loaded: chat.loaded, turns: chat.turns.length, pending: chat.pending };
+    // Not when a saved conversation has just loaded: that's a move being opened, which starts at the top.
+    const grew = chat.turns.length > before.turns || (chat.pending !== null && chat.pending !== before.pending);
+    if (before.key === moveKey && before.loaded && grew) {
+      chatEnd.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    }
+  }, [moveKey, chat.loaded, chat.turns.length, chat.pending]);
 
-  // Every move mentioned in the explanation, placed on the board (only when a page can show them).
+  // Every move mentioned in the explanation (or the conversation), placed on the board when a page can
+  // show them.
   const link = useContext(BoardLinkContext);
-  const notation = useMemo(() => (link ? buildIndex(contextFor(move, link.game)) : null), [move, link?.game]);
+  const notation = useMemo(
+    () => (link ? buildIndex(chatContext(move, link.game, chatLines)) : null),
+    [move, link?.game, chatLines],
+  );
 
   const perspective: Side = userColor ?? move.color;
   const whose = userColor ? "Your" : `${perspective === "white" ? "White" : "Black"}'s`;
@@ -188,7 +209,19 @@ export function CoachPanel({ move, userColor, kicker, onShowLine, onTryAnother, 
             <a href={drillHref}>Practice this position as a drill →</a>
           </p>
         )}
+        {ready && (
+          <ChatThreadView chat={chat} index={notation} onShowLine={onShowLine} onRetry={(q) => chat.ask(q, coached)} />
+        )}
+        <div ref={chatEnd} />
       </div>
+      {ready && (
+        <ChatComposer
+          chat={chat}
+          chatKey={moveKey}
+          suggestions={suggestions(move, userColor)}
+          onAsk={(q) => chat.ask(q, coached)}
+        />
+      )}
       {/* Same buttons in the same places on every move: unavailable ones are disabled, not removed. */}
       <div className="row actions">
         <button

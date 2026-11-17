@@ -6,7 +6,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from chess_analysis_engine.models import Color, MoveReview, Score
+from chess_analysis_engine.explain.coach_chat import MAX_QUESTION, MAX_TURNS, ChatTurn
+from chess_analysis_engine.models import Color, Explanation, MoveReview, Score
 
 PresetName = Literal["quick", "standard", "deep"]
 # How the coach reaches Claude: your Anthropic API key, or your Claude plan through Claude Code.
@@ -115,6 +116,28 @@ class NarrateRequest(BaseModel):
     move: MoveReview
     user_color: Color | None = None
     refresh: bool = False  # ignore the cached narration and ask again
+
+
+class ChatRequest(BaseModel):
+    """A follow-up question about a move (any reviewed or explored move)."""
+
+    move: MoveReview
+    user_color: Color | None = None
+    question: str = Field(min_length=1, max_length=MAX_QUESTION)
+    shown: Explanation | None = None  # the explanation on screen, when it's the coach's narration
+
+
+class ChatThreadRequest(BaseModel):
+    """Which move's conversation to read or clear."""
+
+    fen_before: str
+    uci: str
+    user_color: Color | None = None
+
+
+class ChatView(BaseModel):
+    turns: list[ChatTurn] = Field(default_factory=list)
+    limit: int = MAX_TURNS  # questions per move before the conversation has to be cleared
 
 
 class CoachUsage(BaseModel):

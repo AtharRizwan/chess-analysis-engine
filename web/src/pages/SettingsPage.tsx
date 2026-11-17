@@ -19,7 +19,7 @@ function CoachState({ status, enabled }: { status: CoachStatus | null; enabled: 
       {status.problem
         ? status.problem
         : enabled
-          ? "Ready. Use “✦ Coach voice” on any move."
+          ? "Ready. Use “✦ Coach voice” on any move, or ask questions under a move's explanation."
           : status.backend === "claude_code"
             ? "Claude Code is signed in."
             : "Anthropic credentials found."}
@@ -81,8 +81,8 @@ export function SettingsPage() {
         <div className="stack-tight">
           <label className="row">
             <input type="checkbox" checked={settings.coach_enabled ?? false} onChange={(e) => update({ coach_enabled: e.target.checked })} />
-            Optionally retell moves in a coach's words with Claude. Every claim is checked against the verified
-            facts, and the standard explanation is used if it doesn't match.
+            Optionally retell moves in a coach's words with Claude, and ask it follow-up questions about a
+            move. Every claim is checked against the verified facts, and nothing that doesn't match is shown.
           </label>
           <CoachState status={coach} enabled={settings.coach_enabled ?? false} />
         </div>

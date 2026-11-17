@@ -20,6 +20,8 @@ export type Cause = S["Cause"];
 export type CoachStatus = S["CoachStatus"];
 export type Narration = S["Narration"];
 export type Explanation = S["Explanation"];
+export type ChatView = S["ChatView"];
+export type ChatTurn = S["ChatTurn"];
 export type Classification = MoveReview["classification"];
 export type Side = "white" | "black";
 
@@ -76,6 +78,12 @@ export const api = {
   coachStatus: () => request<CoachStatus>("/api/coach/status"),
   narrate: (move: MoveReview, userColor: Side | null, refresh = false) =>
     request<Narration>("/api/coach/narrate", post({ move, user_color: userColor, refresh })),
+  chat: (move: MoveReview, userColor: Side | null, question: string, shown: Explanation | null) =>
+    request<ChatView>("/api/coach/chat", post({ move, user_color: userColor, question, shown })),
+  chatThread: (move: MoveReview, userColor: Side | null) =>
+    request<ChatView>("/api/coach/chat/thread", post({ fen_before: move.fen_before, uci: move.uci, user_color: userColor })),
+  chatClear: (move: MoveReview, userColor: Side | null) =>
+    request<ChatView>("/api/coach/chat/clear", post({ fen_before: move.fen_before, uci: move.uci, user_color: userColor })),
 };
 
 /** Follow a review job's progress (server-sent events). Returns a function that stops listening. */

@@ -466,6 +466,74 @@ main.page {
   margin-top: 12px;
 }
 
+/* Follow-up questions: the conversation ends the explanation; the box to ask in sits under it. */
+.coach .chat {
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 1px solid var(--grid);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.coach .chat h4 {
+  margin: 0;
+  font-size: 13.5px;
+  font-weight: 650;
+  color: var(--ink-2);
+}
+.chat-turn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+.chat-q {
+  align-self: flex-end;
+  max-width: 85%;
+  padding: 6px 10px;
+  border-radius: 10px 10px 2px 10px;
+  background: var(--accent-wash);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.chat-a {
+  overflow-wrap: anywhere;
+}
+.composer {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.composer .chips {
+  margin-top: 0;
+}
+.composer-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+}
+.composer textarea {
+  flex: 1;
+  resize: none;
+  min-height: 38px;
+  max-height: 120px;
+  field-sizing: content;
+}
+.composer .clear {
+  align-self: flex-end;
+}
+button.chip.suggestion {
+  border: 1px solid var(--border);
+  font-size: 12.5px;
+  padding: 3px 10px;
+}
+button.chip.suggestion:hover:not(:disabled) {
+  background: var(--accent-wash);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 /* Review page, wide screens: the side panel has a fixed size, so nothing in it moves from move to move.
    The explanation scrolls inside its card; the card's buttons, the summary row and the move list stay put. */
 @media (min-width: 961px) {
@@ -500,6 +568,12 @@ main.page {
     overflow-y: auto;
     margin-right: -10px;
     padding-right: 10px; /* room for the scrollbar */
+  }
+  .side-panel.fixed .coach .composer {
+    flex: none;
+    margin-top: 0;
+    padding: 10px 0 12px;
+    border-top: 1px solid var(--grid);
   }
   .side-panel.fixed .coach .actions {
     margin-top: 0;

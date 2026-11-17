@@ -1,5 +1,13 @@
-import { useEffect, useState } from "react";
-import { api, type CoachStatus, type MoveReview, type Narration, type Side } from "../api/client";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import {
+  api,
+  type ChatTurn,
+  type CoachStatus,
+  type Explanation,
+  type MoveReview,
+  type Narration,
+  type Side,
+} from "../api/client";
 
 // One status request per page load (Settings refreshes it after a save).
 let statusRequest: Promise<CoachStatus | null> | null = null;
@@ -78,4 +86,77 @@ export function narrate(move: MoveReview, userColor: Side | null, refresh = fals
     request.catch(() => narrations.delete(key));
   }
   return request;
+}
+
+// --- follow-up questions ---------------------------------------------------------------------------
+// One conversation per move (the server keeps them). Kept here by move, so an answer that arrives after
+// you've stepped to another move is waiting when you come back, and never shows up on the wrong move.
+
+type Chat = {
+  turns: ChatTurn[];
+  limit: number;
+  loaded: boolean;
+  pending: string | null; // the question waiting for its answer
+  error: string | null;
+};
+
+const NO_CHAT: Chat = { turns: [], limit: 20, loaded: false, pending: null, error: null };
+const chats = new Map<string, Chat>();
+const chatListeners = new Set<() => void>();
+
+function setChat(key: string, change: Partial<Chat>) {
+  chats.set(key, { ...(chats.get(key) ?? NO_CHAT), ...change });
+  chatListeners.forEach((listener) => listener());
+}
+
+function subscribeChats(listener: () => void) {
+  chatListeners.add(listener);
+  return () => {
+    chatListeners.delete(listener);
+  };
+}
+
+const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
+
+export type CoachChat = Chat & {
+  ask: (question: string, shown: Explanation | null) => void;
+  clear: () => void;
+};
+
+/** The conversation about `move`: its turns so far, and asking or clearing. Loads only when `enabled`. */
+export function useCoachChat(move: MoveReview, userColor: Side | null, enabled: boolean): CoachChat {
+  const key = narrationKey(move, userColor);
+  const chat = useSyncExternalStore(subscribeChats, () => chats.get(key) ?? NO_CHAT);
+
+  useEffect(() => {
+    if (!enabled || chats.has(key)) return;
+    setChat(key, {});
+    api
+      .chatThread(move, userColor)
+      .then((view) => setChat(key, { turns: view.turns ?? [], limit: view.limit, loaded: true }))
+      .catch((e: unknown) => setChat(key, { loaded: true, error: message(e) }));
+    // `move` is identified by `key`
+  }, [enabled, key]);
+
+  const ask = useCallback(
+    (question: string, shown: Explanation | null) => {
+      const text = question.trim();
+      if (!text || chats.get(key)?.pending) return;
+      setChat(key, { pending: text, error: null });
+      api
+        .chat(move, userColor, text, shown)
+        .then((view) => setChat(key, { turns: view.turns ?? [], limit: view.limit, loaded: true, pending: null }))
+        .catch((e: unknown) => setChat(key, { pending: null, error: message(e) }));
+    },
+    [key],
+  );
+
+  const clear = useCallback(() => {
+    api
+      .chatClear(move, userColor)
+      .then((view) => setChat(key, { turns: view.turns ?? [], limit: view.limit, error: null }))
+      .catch((e: unknown) => setChat(key, { error: message(e) }));
+  }, [key]);
+
+  return { ...chat, ask, clear };
 }
