@@ -123,6 +123,12 @@ export function contextFor(move: MoveReview, game?: LineRef | null): NotationCon
   return { lines, game, anchors: [move.fen_before, move.fen_after] };
 }
 
+/** A move's context plus the lines the engine checked while answering questions about it. */
+export function chatContext(move: MoveReview, game: LineRef | null | undefined, lines: LineRef[]): NotationContext {
+  const context = contextFor(move, game);
+  return { ...context, lines: [...context.lines, ...lines] };
+}
+
 const SAN_RE =
   /(?<![A-Za-z0-9])(?:(\d+)\s*(\.\s*\.\.|\.…|…|\.)\s*|(\.\.\.|…)\s*)?(O-O-O|O-O|0-0-0|0-0|[KQRBN][a-h]?[1-8]?x?[a-h][1-8](?:=[QRBN])?|[a-h]x[a-h][1-8](?:=[QRBN])?|[a-h][1-8](?:=[QRBN])?)[+#]?[!?]*(?![A-Za-z0-9])/g;
 

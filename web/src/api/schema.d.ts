@@ -368,6 +368,63 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/coach/chat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Chat
+         * @description Ask a question about a move; returns the move's whole conversation with the answer added.
+         */
+        post: operations["chat_api_coach_chat_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/coach/chat/thread": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Chat Thread
+         * @description A move's conversation so far (empty when there's none).
+         */
+        post: operations["chat_thread_api_coach_chat_thread_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/coach/chat/clear": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Chat Clear */
+        post: operations["chat_clear_api_coach_chat_clear_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/health": {
         parameters: {
             query?: never;
@@ -457,6 +514,63 @@ export interface components {
             lesson?: string | null;
             /** Examples */
             examples?: components["schemas"]["Example"][];
+        };
+        /**
+         * ChatRequest
+         * @description A follow-up question about a move (any reviewed or explored move).
+         */
+        ChatRequest: {
+            move: components["schemas"]["MoveReview"];
+            /** User Color */
+            user_color?: ("white" | "black") | null;
+            /** Question */
+            question: string;
+            shown?: components["schemas"]["Explanation"] | null;
+        };
+        /**
+         * ChatThreadRequest
+         * @description Which move's conversation to read or clear.
+         */
+        ChatThreadRequest: {
+            /** Fen Before */
+            fen_before: string;
+            /** Uci */
+            uci: string;
+            /** User Color */
+            user_color?: ("white" | "black") | null;
+        };
+        /** ChatTurn */
+        ChatTurn: {
+            /** Question */
+            question: string;
+            /** Answer */
+            answer: string;
+            /**
+             * Verified
+             * @default true
+             */
+            verified: boolean;
+            /** Problems */
+            problems?: string[];
+            /** Notes */
+            notes?: string[];
+            /** Lookups */
+            lookups?: number[];
+            /** Lines */
+            lines?: components["schemas"]["LineRef"][];
+            /** Labels */
+            labels?: string[];
+            usage?: components["schemas"]["Usage"];
+        };
+        /** ChatView */
+        ChatView: {
+            /** Turns */
+            turns?: components["schemas"]["ChatTurn"][];
+            /**
+             * Limit
+             * @default 20
+             */
+            limit: number;
         };
         /** ClockInfo */
         ClockInfo: {
@@ -1810,6 +1924,105 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Narration"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    chat_api_coach_chat_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChatRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    chat_thread_api_coach_chat_thread_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChatThreadRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    chat_clear_api_coach_chat_clear_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChatThreadRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatView"];
                 };
             };
             /** @description Validation Error */

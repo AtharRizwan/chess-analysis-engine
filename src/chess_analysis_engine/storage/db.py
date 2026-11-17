@@ -135,6 +135,14 @@ MIGRATIONS: list[str] = [
     """
     ALTER TABLE coach_usage ADD COLUMN backend TEXT NOT NULL DEFAULT 'api';
     """,
+    # 7 — follow-up questions to the coach: one conversation per move (and side), with its engine checks
+    """
+    CREATE TABLE coach_chats (
+        key TEXT PRIMARY KEY,
+        payload TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+    """,
 ]
 
 
@@ -376,6 +384,19 @@ class Database:
             "INSERT OR REPLACE INTO narrations (key, model, payload, created_at) VALUES (?, ?, ?, ?)",
             (key, model, payload, utcnow()),
         )
+
+    def chat_get(self, key: str) -> str | None:
+        row = self.conn.execute("SELECT payload FROM coach_chats WHERE key = ?", (key,)).fetchone()
+        return row["payload"] if row else None
+
+    def chat_put(self, key: str, payload: str) -> None:
+        self.conn.execute(
+            "INSERT OR REPLACE INTO coach_chats (key, payload, updated_at) VALUES (?, ?, ?)",
+            (key, payload, utcnow()),
+        )
+
+    def chat_delete(self, key: str) -> None:
+        self.conn.execute("DELETE FROM coach_chats WHERE key = ?", (key,))
 
     def log_coach_usage(self, model: str, outcome: str, usage: dict[str, int], backend: str = "api") -> None:
         self.conn.execute(

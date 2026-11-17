@@ -131,6 +131,22 @@ narrated automatically; other moves have an "Ask the coach" button. The default 
   with a note saying why. Coach text is marked "✦ AI", and the facts and lines always stay visible.
 - Narrations are cached, so each move is narrated once, whichever way the coach runs. Settings shows
   the calls so far, with an estimated cost for the API-key calls.
+
+### Asking the coach about a move
+
+When the coach is on, every move's explanation ends with a box for follow-up questions ("why can't I
+just take the knight?", "what was the threat?", "why not 12...Nxe5?").
+
+- Answers get the same automatic checks as narrations. An answer that still fails after one correction
+  round isn't shown: you see that there's no answer that checks out, why, and an "Ask again" button.
+- Moves you write in a question are checked by Stockfish before Claude answers. When you describe a move
+  in words, Claude can ask the engine to check up to three moves or short lines once per question. Every
+  checked line can be shown on the board, and moves in the answers link to the board like the rest of
+  the explanation.
+- Each move keeps its own conversation, saved in the app's database, up to 20 questions per move; "Clear
+  conversation" starts again.
+- A question takes one to three Claude calls (one more when the engine is asked to check something, one
+  more for a correction). On the Claude subscription, they count toward your plan's usage limits.
 - On the API, the system prompt is cached (prompt caching) and requests use server-side refusal fallback
   (`fallbacks: "default"`, beta `server-side-fallback-2026-07-01`), which a chess review shouldn't need.
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { positionsAlong } from "./chess";
-import { buildIndex, linkify, type MoveRef } from "./notation";
+import type { MoveReview } from "../api/client";
+import { buildIndex, chatContext, linkify, type MoveRef } from "./notation";
 
 const START = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 const GAME = ["e2e4", "e7e5", "f1c4", "b8c6", "d1h5", "g8f6"]; // 1.e4 e5 2.Bc4 Nc6 3.Qh5 Nf6??
@@ -54,5 +55,33 @@ describe("linkify", () => {
       .map((s) => (typeof s === "string" ? s : s.text))
       .join("");
     expect(joined).toBe(text);
+  });
+});
+
+describe("chatContext", () => {
+  // 3...Nf6?? as reviewed, and a line the engine checked during a conversation about it.
+  const move = {
+    fen_before: BEFORE,
+    fen_after: AFTER,
+    uci: "g8f6",
+    refutation: { uci: ["h5f7"], san: ["Qxf7#"] },
+    best: { uci: ["g7g6", "h5f3", "g8f6"], san: ["g6", "Qf3", "Nf6"] },
+  } as unknown as MoveReview;
+  const checked = { start_fen: BEFORE, uci: ["d8f6", "b1c3", "f6f2"], san: ["Qf6", "Nc3", "Qxf2+"] };
+
+  it("links moves from the engine's checks in the coach's answers", () => {
+    const text = "After 3...Qf6 4. Nc3 your queen can play 4...Qxf2+.";
+    const without = linkify(text, buildIndex(chatContext(move, game, [])));
+    // Without the check, 4...Qxf2+ can't be placed: Black's queen is on d8 in the positions at hand.
+    expect(without.filter((s) => typeof s !== "string").map((s) => (s as MoveRef).label)).not.toContain("4...Qxf2+");
+    const refs = linkify(text, buildIndex(chatContext(move, game, [checked]))).filter(
+      (s): s is MoveRef => typeof s !== "string",
+    );
+    expect(refs.map((r) => [r.label, r.index])).toEqual([
+      ["3...Qf6", 0],
+      ["4. Nc3", 1],
+      ["4...Qxf2+", 2],
+    ]);
+    expect(refs[2].line.uci).toEqual(checked.uci);
   });
 });

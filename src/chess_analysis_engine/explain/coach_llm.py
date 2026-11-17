@@ -34,6 +34,7 @@ from chess_analysis_engine.models import (
     EngineLine,
     Explanation,
     ExplanationSection,
+    Fact,
     LineRef,
     MoveReview,
 )
@@ -200,24 +201,27 @@ def _player(user: Color | None, color: Color) -> str:
     return Voice(user).who(color)
 
 
+def fact_json(fact: Fact, user: Color | None, with_id: bool = True) -> dict[str, Any]:
+    """One verified fact as Claude sees it (empty fields left out)."""
+    item: dict[str, Any] = {
+        "id": fact.id if with_id else None,
+        "kind": fact.kind,
+        "motif": fact.motif,
+        "side": _player(user, fact.actor) if fact.actor else None,
+        "squares": fact.squares,
+        "material": fact.material,
+        "details": fact.data,
+        "line": _line_json(fact.line),
+    }
+    return {k: val for k, val in item.items() if val not in (None, [], {})}
+
+
 def build_payload(move: MoveReview, user: Color | None) -> dict[str, Any]:
     """The user message: everything Claude may use, and nothing else."""
     v = Voice(user)
     explanation = move.explanation or build_explanation(move, move.facts, user)
     perspective: Color = user or move.color
-    facts = []
-    for fact in move.facts:
-        item: dict[str, Any] = {
-            "id": fact.id,
-            "kind": fact.kind,
-            "motif": fact.motif,
-            "side": _player(user, fact.actor) if fact.actor else None,
-            "squares": fact.squares,
-            "material": fact.material,
-            "details": fact.data,
-            "line": _line_json(fact.line),
-        }
-        facts.append({k: val for k, val in item.items() if val not in (None, [], {})})
+    facts = [fact_json(fact, user) for fact in move.facts]
     return {
         "voice": (
             f"Speak to the player of {user.capitalize()} as 'you'."
@@ -320,6 +324,20 @@ def _strings(value: Any) -> Iterator[str]:
             yield from _strings(item)
 
 
+def _walk(positions: list[chess.Board], sans: dict[str, set[chess.Color]], fen: str, ucis: list[str]) -> None:
+    """Add the positions along a line, and the moves played in it (with the side playing each)."""
+    board = chess.Board(fen)
+    positions.append(board.copy(stack=False))
+    for uci in ucis:
+        try:
+            played = chess.Move.from_uci(uci)
+            sans.setdefault(_norm_san(board.san(played)), set()).add(board.turn)
+            board.push(played)
+        except (ValueError, AssertionError):
+            return
+        positions.append(board.copy(stack=False))
+
+
 @dataclass
 class Grounding:
     """What a narration of one move may refer to."""
@@ -334,6 +352,8 @@ class Grounding:
     user: Color | None
     mover: Color
     problems: list[str] = field(default_factory=list)
+    # "piece on square" mentions the player wrote themselves (a chat question), which may be repeated
+    quoted_pieces: set[tuple[int, int]] = field(default_factory=set)
 
     @classmethod
     def of(cls, move: MoveReview, user: Color | None) -> Grounding:
@@ -341,16 +361,7 @@ class Grounding:
         sans: dict[str, set[chess.Color]] = {}
 
         def walk(fen: str, ucis: list[str]) -> None:
-            board = chess.Board(fen)
-            positions.append(board.copy(stack=False))
-            for uci in ucis:
-                try:
-                    played = chess.Move.from_uci(uci)
-                    sans.setdefault(_norm_san(board.san(played)), set()).add(board.turn)
-                    board.push(played)
-                except (ValueError, AssertionError):
-                    return
-                positions.append(board.copy(stack=False))
+            _walk(positions, sans, fen, ucis)
 
         walk(move.fen_before, [move.uci])
         for line in [move.best, *move.alternatives]:
@@ -411,6 +422,30 @@ class Grounding:
             mover=move.color,
         )
 
+    def add_line(self, fen: str, ucis: list[str]) -> None:
+        """Let the text refer to the moves and positions along another line."""
+        _walk(self.positions, self.sans, fen, ucis)
+
+    def merge(self, other: Grounding) -> None:
+        """Also accept what `other` (the grounding of another move) accepts."""
+        self.positions += other.positions
+        for san, sides in other.sans.items():
+            self.sans.setdefault(san, set()).update(sides)
+        self.destinations |= other.destinations
+        self.fact_ids |= other.fact_ids
+        self.percents += other.percents
+        self.mates |= other.mates
+
+    def allow_quoted(self, text: str) -> None:
+        """Moves and pieces the player named themselves may be repeated ("Qxf7 isn't legal here")."""
+        for match in _SAN_RE.finditer(text):
+            if not _is_square(match):
+                self.sans.setdefault(_norm_san(match.group("san")), set()).update({chess.WHITE, chess.BLACK})
+        for match in _PIECE_RE.finditer(text):
+            piece = _PIECES[match.group("piece").lower()]
+            for name in re.findall(r"[a-h][1-8]", match.group("squares")):
+                self.quoted_pieces.add((piece, chess.parse_square(name)))
+
     def _owner_color(self, owner: str | None) -> chess.Color | None:
         if not owner:
             return None
@@ -450,7 +485,7 @@ class Grounding:
             moving = match.group("prep").lower() == "to"
             for name in re.findall(r"[a-h][1-8]", match.group("squares")):
                 square = chess.parse_square(name)
-                if self._on_board(piece, square, color):
+                if self._on_board(piece, square, color) or (piece, square) in self.quoted_pieces:
                     continue
                 if moving and (piece, square) in self.destinations:
                     continue
@@ -584,13 +619,20 @@ def make_client() -> Any:
     return client
 
 
-def _create(client: Any, model: str, effort: str, messages: list[dict[str, Any]]) -> Any:
+def _create(
+    client: Any,
+    model: str,
+    effort: str,
+    messages: list[dict[str, Any]],
+    system: str = SYSTEM_PROMPT,
+    schema: dict[str, Any] = COACH_SCHEMA,
+) -> Any:
     kwargs: dict[str, Any] = {
         "model": model,
         "max_tokens": MAX_TOKENS,
-        "system": [{"type": "text", "text": SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}}],
+        "system": [{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
         "messages": messages,
-        "output_config": {"format": {"type": "json_schema", "schema": COACH_SCHEMA}, "effort": effort},
+        "output_config": {"format": {"type": "json_schema", "schema": schema}, "effort": effort},
     }
     if model.startswith(FALLBACK_MODELS):
         # If a safety classifier ever declines (very unlikely for chess), the API re-runs the request on
@@ -625,22 +667,28 @@ def _api_error(exc: Exception) -> CoachError:
     return CoachError(f"The coach failed: {exc}", 502)
 
 
-def _read_note(response: Any) -> tuple[CoachNote | None, str | None]:
-    """The note in a response, or why there isn't one. Checks stop_reason before touching the content."""
+def read_reply[ReplyT: BaseModel](
+    response: Any, shape: type[ReplyT], task: str = "narrate this move", noun: str = "the note"
+) -> tuple[ReplyT | None, str | None]:
+    """The structured reply in a response, or why there isn't one. Checks stop_reason first."""
     reason = getattr(response, "stop_reason", None)
     if reason == "refusal":
         details = getattr(response, "stop_details", None)
         category = getattr(details, "category", None)
-        return None, f"Claude declined to narrate this move{f' ({category})' if category else ''}"
+        return None, f"Claude declined to {task}{f' ({category})' if category else ''}"
     if reason == "max_tokens":
         return None, "Claude ran out of room before finishing"
     text = next((b.text for b in response.content if getattr(b, "type", None) == "text"), None)
     if text is None:
         return None, "Claude's reply had no text"
     try:
-        return CoachNote.model_validate_json(text), None
+        return shape.model_validate_json(text), None
     except ValueError as exc:
-        return None, f"Claude's reply wasn't valid JSON for the note: {exc}"
+        return None, f"Claude's reply wasn't valid JSON for {noun}: {exc}"
+
+
+def _read_note(response: Any) -> tuple[CoachNote | None, str | None]:
+    return read_reply(response, CoachNote)
 
 
 def narrate_move(
