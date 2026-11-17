@@ -14,7 +14,7 @@ type Props = {
   orientation: Side;
   lastMove?: [Key, Key];
   annotations?: Annotation[];
-  /** Let the side to move play a move (the "why not this move?" explorer). */
+  /** Let the side to move play a move (trying your own line, or solving a drill). */
   interactive?: boolean;
   onMove?: (orig: Key, dest: Key) => void;
   /** Animate piece moves (off for previews: jumping between previewed positions should be instant). */

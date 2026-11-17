@@ -7,7 +7,6 @@ import {
   type GameSummary as GameRow,
   type JobStatus,
   type LineRef,
-  type MoveReview,
   type PositionScore,
   type Side,
   watchJob,
@@ -18,21 +17,17 @@ import { CoachPanel } from "../components/CoachPanel";
 import { EvalBar } from "../components/EvalBar";
 import { EvalGraph } from "../components/EvalGraph";
 import { GameSummary } from "../components/GameSummary";
+import { LineMoves } from "../components/LineMoves";
 import { MoveList } from "../components/MoveList";
-import { gamePliesAlong, numberLine, play, positionsAlong, squaresOf, uciFromDrag } from "../lib/chess";
+import { gamePliesAlong, positionsAlong, squaresOf, uciFromDrag } from "../lib/chess";
+import { branchOff, explainRequest, type Exploration, exploreGame, moveKey, playMove, stepTo } from "../lib/explore";
+import { useFetched } from "../lib/useFetched";
 
 type View =
   | { kind: "game" }
-  | { kind: "line"; line: LineRef; index: number; title: string }
-  | {
-      kind: "explore";
-      basePly: number;
-      moves: string[];
-      sans: string[];
-      result: MoveReview | null;
-      loading: boolean;
-      error: string | null;
-    };
+  // `returnTo`: your own line, when this line was opened from one of its explanations.
+  | { kind: "line"; line: LineRef; index: number; title: string; returnTo: Exploration | null }
+  | { kind: "explore"; exploration: Exploration };
 
 const STAGES: Record<string, string> = {
   engine: "Analyzing every position",
@@ -103,6 +98,7 @@ export function ReviewPage({ gameId, initialPly }: { gameId: number; initialPly?
     if (review && initialPly) setPly(Math.max(0, Math.min(review.moves?.length ?? 0, initialPly)));
   }, [review, initialPly]);
   const fens = useMemo(() => (review ? [review.start_fen, ...moves.map((m) => m.fen_after)] : []), [review, moves]);
+  const gameUci = useMemo(() => moves.map((m) => m.uci), [moves]);
   const userColor: Side | null = review?.user_color ?? null;
   const baseOrientation: Side = userColor ?? "white";
   const orientation: Side = flipped ? (baseOrientation === "white" ? "black" : "white") : baseOrientation;
@@ -115,8 +111,8 @@ export function ReviewPage({ gameId, initialPly }: { gameId: number; initialPly?
   // the others are evaluated once when the line opens.
   const openLine = view.kind === "line" ? view.line : null;
   const lineGamePlies = useMemo(
-    () => (openLine ? gamePliesAlong(openLine.start_fen, openLine.uci, fens, moves.map((m) => m.uci)) : []),
-    [openLine, fens, moves],
+    () => (openLine ? gamePliesAlong(openLine.start_fen, openLine.uci, fens, gameUci) : []),
+    [openLine, fens, gameUci],
   );
   useEffect(() => {
     if (!openLine) return;
@@ -130,81 +126,73 @@ export function ReviewPage({ gameId, initialPly }: { gameId: number; initialPly?
     };
   }, [openLine]);
 
-  const explorePositions = useMemo(
-    () => (view.kind === "explore" && fens.length ? positionsAlong(fens[view.basePly], view.moves) : []),
-    [view, fens],
+  // Your own line: on the board, or behind the line you opened from it (the panel stays on its move).
+  const exploring = view.kind === "explore" ? view.exploration : null;
+  const mine = exploring ?? (view.kind === "line" ? view.returnTo : null);
+  const exploringFen = exploring ? exploring.positions[exploring.index] : null;
+  const explained = useFetched(mine?.index ? moveKey(mine) : null, () =>
+    api.explain({ ...explainRequest(mine!), user_color: userColor }),
   );
-
-  const explore = useCallback(
-    (basePly: number, previous: string[], previousSans: string[], uci: string) => {
-      if (!review) return;
-      const from = positionsAlong(fens[basePly], previous).at(-1)!;
-      const san = play(from, uci).san;
-      const nextMoves = [...previous, uci];
-      const nextSans = [...previousSans, san];
-      setView({ kind: "explore", basePly, moves: nextMoves, sans: nextSans, result: null, loading: true, error: null });
-      api
-        .explain({
-          fen: review.start_fen,
-          moves: [...moves.slice(0, basePly).map((m) => m.uci), ...previous],
-          move: uci,
-          user_color: userColor,
-        })
-        .then((result) =>
-          setView((v) => (v.kind === "explore" && v.moves.length === nextMoves.length ? { ...v, result, loading: false } : v)),
-        )
-        .catch((e: unknown) =>
-          setView((v) =>
-            v.kind === "explore" ? { ...v, loading: false, error: e instanceof Error ? e.message : String(e) } : v,
-          ),
-        );
-    },
-    [review, fens, moves, userColor],
+  const answer = mine?.index ? explained.get(moveKey(mine)) : undefined;
+  // The explanation takes seconds; a quick search moves the eval bar right away.
+  const needsQuickScore = exploringFen !== null && !fens.includes(exploringFen) && !answer?.value;
+  const quickScores = useFetched(needsQuickScore ? exploringFen : null, () =>
+    api.evaluate(exploringFen!, []).then(([score]) => score),
   );
 
   const current = ply ? moves[ply - 1] : null;
-
-  const onBoardMove = (orig: Key, dest: Key) => {
-    if (view.kind === "game") {
-      explore(ply, [], [], uciFromDrag(fens[ply], orig, dest));
-    } else if (view.kind === "explore") {
-      explore(view.basePly, view.moves, view.sans, uciFromDrag(explorePositions.at(-1)!, orig, dest));
-    }
-  };
 
   const goto = useCallback((target: number) => {
     setView({ kind: "game" });
     setPly(Math.max(0, Math.min(moves.length, target)));
   }, [moves.length]);
 
+  // The control row and the arrow keys step through whatever the board is showing.
+  const step = useMemo(() => {
+    if (view.kind === "line") {
+      const last = view.line.uci.length;
+      return { at: view.index, last, go: (index: number) => setView({ ...view, index: Math.max(0, Math.min(last, index)) }) };
+    }
+    if (view.kind === "explore") {
+      const line = view.exploration;
+      return { at: line.index, last: line.moves.length, go: (index: number) => setView({ kind: "explore", exploration: stepTo(line, index) }) };
+    }
+    return { at: ply, last: moves.length, go: goto };
+  }, [view, ply, moves.length, goto]);
+
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement;
       if (target.closest("input, textarea, select")) return;
-      if (event.key === "Escape") setView({ kind: "game" });
+      if (event.key === "Escape") setView((v) => (v.kind === "line" && v.returnTo ? { kind: "explore", exploration: v.returnTo } : { kind: "game" }));
       else if (event.key === "f") setFlipped((f) => !f);
-      else if (view.kind === "line" && (event.key === "ArrowLeft" || event.key === "ArrowRight")) {
-        const delta = event.key === "ArrowLeft" ? -1 : 1;
-        setView({ ...view, index: Math.max(0, Math.min(view.line.uci.length, view.index + delta)) });
-      } else if (view.kind === "game") {
-        if (event.key === "ArrowLeft") goto(ply - 1);
-        else if (event.key === "ArrowRight") goto(ply + 1);
-        else if (event.key === "Home") goto(0);
-        else if (event.key === "End") goto(moves.length);
-        else return;
-      } else return;
+      else if (event.key === "ArrowLeft") step.go(step.at - 1);
+      else if (event.key === "ArrowRight") step.go(step.at + 1);
+      else if (event.key === "Home") step.go(0);
+      else if (event.key === "End") step.go(step.last);
+      else return;
       event.preventDefault();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [view, ply, moves.length, goto]);
+  }, [step]);
+
+  const showLineAt = useCallback((line: LineRef, index: number, title: string) => {
+    setView((v) => ({
+      kind: "line",
+      line,
+      index,
+      title,
+      returnTo: v.kind === "explore" ? v.exploration : v.kind === "line" ? v.returnTo : null,
+    }));
+  }, []);
 
   // Moves mentioned in the explanations: hover shows one on the board, click steps into its line.
-  const viewKey = `${ply}:${view.kind}:${view.kind === "line" ? view.index : ""}:${view.kind === "explore" ? view.moves.length : ""}`;
+  const viewKey = `${ply}:${view.kind}:${view.kind === "line" ? view.index : ""}:${exploringFen ?? ""}`;
   const { preview, active, show, clear } = useBoardPreview(viewKey);
   const gameLine = useMemo(
-    () => (review ? { start_fen: review.start_fen, uci: moves.map((m) => m.uci), san: moves.map((m) => m.san) } : null),
-    [review, moves],
+    () => (review ? { start_fen: review.start_fen, uci: gameUci, san: moves.map((m) => m.san) } : null),
+    [review, gameUci, moves],
   );
   const boardLink = useMemo<BoardLink>(
     () => ({
@@ -214,10 +202,10 @@ export function ReviewPage({ gameId, initialPly }: { gameId: number; initialPly?
       open: (ref) => {
         clear();
         if (ref.game) goto(ref.index + 1);
-        else setView({ kind: "line", line: ref.line, index: ref.index + 1, title: `From the explanation: ${ref.label}` });
+        else showLineAt(ref.line, ref.index + 1, `From the explanation: ${ref.label}`);
       },
     }),
-    [show, active, gameLine, clear, goto],
+    [show, active, gameLine, clear, goto, showLineAt],
   );
 
   if (error) {
@@ -260,19 +248,25 @@ export function ReviewPage({ gameId, initialPly }: { gameId: number; initialPly?
     lastMove = view.index ? squaresOf(view.line.uci[view.index - 1]) : undefined;
     const next = view.line.uci[view.index];
     annotations = next ? [{ orig: next.slice(0, 2), dest: next.slice(2, 4), brush: "blue" }] : [];
-    interactive = false;
     const gamePly = lineGamePlies[view.index];
     const evaluated = lineEvals?.line === view.line ? lineEvals.evals[view.index] : undefined;
     if (gamePly !== undefined) ({ whiteWin, score } = evalAt(gamePly));
     else if (evaluated) ({ win: whiteWin, score } = evaluated);
-  } else if (view.kind === "explore") {
-    fen = explorePositions.at(-1)!;
-    lastMove = view.moves.length ? squaresOf(view.moves.at(-1)!) : view.basePly ? squaresOf(moves[view.basePly - 1].uci) : undefined;
-    annotations = view.result ? notGreen(view.result.explanation?.annotations) : [];
-    interactive = !view.loading;
-    if (view.result) {
-      whiteWin = view.result.win_after;
-      score = view.result.eval_after;
+  } else if (exploring) {
+    fen = exploringFen!;
+    const last = exploring.index ? exploring.moves[exploring.index - 1] : exploring.history.at(-1);
+    lastMove = last ? squaresOf(last) : undefined;
+    annotations = notGreen(answer?.value?.explanation?.annotations);
+    // The position's own number if it's known yet, else the nearest one before it.
+    for (let i = exploring.index; i >= 0; i--) {
+      const gamePly = fens.indexOf(exploring.positions[i]);
+      const played = i ? explained.get(moveKey(exploring, i))?.value : undefined;
+      const quick = quickScores.get(exploring.positions[i])?.value;
+      if (gamePly >= 0) ({ whiteWin, score } = evalAt(gamePly));
+      else if (played) ({ win_after: whiteWin, eval_after: score } = played);
+      else if (quick) ({ win: whiteWin, score } = quick);
+      else continue;
+      break;
     }
   }
 
@@ -284,7 +278,22 @@ export function ReviewPage({ gameId, initialPly }: { gameId: number; initialPly?
     interactive = false;
   }
 
-  const showLine = (line: LineRef, title: string) => setView({ kind: "line", line, index: 0, title });
+  const onBoardMove = (orig: Key, dest: Key) => {
+    const uci = uciFromDrag(fen, orig, dest);
+    if (exploring) {
+      setView({ kind: "explore", exploration: playMove(exploring, uci) });
+    } else if (view.kind === "line") {
+      // Playing the line's next move follows it; anything else starts a line of your own from here.
+      if (view.line.uci[view.index] === uci) step.go(view.index + 1);
+      else setView({ kind: "explore", exploration: branchOff(view.line, view.index, uci, view.returnTo, fens, gameUci) });
+    } else if (gameUci[ply] === uci) {
+      goto(ply + 1); // the move that was played: its review is already here
+    } else {
+      setView({ kind: "explore", exploration: playMove(exploreGame(fens, gameUci, ply), uci) });
+    }
+  };
+
+  const showLine = (line: LineRef, title: string) => showLineAt(line, 0, title);
 
   return (
     <BoardLinkContext.Provider value={boardLink}>
@@ -302,40 +311,44 @@ export function ReviewPage({ gameId, initialPly }: { gameId: number; initialPly?
               animate={!preview}
             />
           </div>
-          {view.kind === "game" && (
-            <div className="board-controls">
-              <button className="ghost" onClick={() => goto(0)} aria-label="Start">⏮</button>
-              <button className="ghost" onClick={() => goto(ply - 1)} aria-label="Previous move">◀</button>
-              <button className="ghost" onClick={() => goto(ply + 1)} aria-label="Next move">▶</button>
-              <button className="ghost" onClick={() => goto(moves.length)} aria-label="End">⏭</button>
-              <button className="ghost" onClick={() => setFlipped((f) => !f)} aria-label="Flip board">⇅</button>
-            </div>
-          )}
+          <div className="board-controls">
+            <button className="ghost" onClick={() => step.go(0)} disabled={step.at === 0} aria-label="Start">⏮</button>
+            <button className="ghost" onClick={() => step.go(step.at - 1)} disabled={step.at === 0} aria-label="Previous move">◀</button>
+            <button className="ghost" onClick={() => step.go(step.at + 1)} disabled={step.at === step.last} aria-label="Next move">▶</button>
+            <button className="ghost" onClick={() => step.go(step.last)} disabled={step.at === step.last} aria-label="End">⏭</button>
+            <button className="ghost" onClick={() => setFlipped((f) => !f)} aria-label="Flip board">⇅</button>
+          </div>
+          {view.kind === "game" && <div className="board-hint muted small">Drag any piece to try your own line.</div>}
           {view.kind === "line" && (
             <div className="mode-banner">
               <div className="grow small">
                 <strong>{view.title}</strong>
-                <div>{numberLine(view.line.start_fen, view.line.san.slice(0, Math.max(view.index, 1)))}</div>
+                <LineMoves
+                  fen={view.line.start_fen}
+                  sans={view.line.san.slice(0, Math.max(view.index, 1))}
+                  index={view.index}
+                  onSelect={step.go}
+                />
               </div>
-              <button onClick={() => setView({ ...view, index: Math.max(0, view.index - 1) })} disabled={view.index === 0}>◀</button>
-              <button
-                onClick={() => setView({ ...view, index: Math.min(view.line.uci.length, view.index + 1) })}
-                disabled={view.index === view.line.uci.length}
-              >
-                ▶
+              {view.returnTo && (
+                <button className="primary" onClick={() => setView({ kind: "explore", exploration: view.returnTo! })}>
+                  Back to my line
+                </button>
+              )}
+              <button className={view.returnTo ? undefined : "primary"} onClick={() => setView({ kind: "game" })}>
+                Back to the game
               </button>
-              <button className="primary" onClick={() => setView({ kind: "game" })}>Back to the game</button>
             </div>
           )}
-          {view.kind === "explore" && (
+          {exploring && (
             <div className="mode-banner">
               <div className="grow small">
-                <strong>Exploring</strong>
-                <div>
-                  {view.sans.length
-                    ? numberLine(fens[view.basePly], view.sans)
-                    : "Drag a piece to try your own move from this position."}
-                </div>
+                <strong>Your line</strong>
+                {exploring.moves.length ? (
+                  <LineMoves fen={exploring.positions[0]} sans={exploring.sans} index={exploring.index} onSelect={step.go} />
+                ) : (
+                  <div>Drag a piece to try your own move from this position.</div>
+                )}
               </div>
               <button className="primary" onClick={() => setView({ kind: "game" })}>Back to the game</button>
             </div>
@@ -345,17 +358,26 @@ export function ReviewPage({ gameId, initialPly }: { gameId: number; initialPly?
 
         <div className="side-panel fixed">
           <div className="panel-slot">
-            {view.kind === "explore" ? (
-              view.loading ? (
-                <div className="card">Thinking about {view.sans.at(-1)}…</div>
-              ) : view.error ? (
-                <div className="card error">{view.error}</div>
-              ) : view.result ? (
-                <CoachPanel move={view.result} userColor={userColor} kicker="Your idea, explained" onShowLine={showLine} />
+            {mine ? (
+              !mine.index ? (
+                <div className="card">
+                  {mine.moves.length
+                    ? "This is where your line starts. Drag a piece to try a different move, or press ▶ to replay it."
+                    : "Drag a piece on the board to play the move you were considering. You'll see how the engine rates it and why."}
+                </div>
+              ) : answer?.error ? (
+                <div className="card error">{answer.error}</div>
+              ) : answer?.value ? (
+                <CoachPanel
+                  move={answer.value}
+                  userColor={userColor}
+                  kicker="Your idea, explained"
+                  onShowLine={showLine}
+                  onTryAnother={() => setView({ kind: "explore", exploration: stepTo(mine, mine.index - 1) })}
+                />
               ) : (
                 <div className="card">
-                  Drag a piece on the board to play the move you were considering. You'll see how the engine
-                  rates it and why.
+                  Thinking about {mine.sans[mine.index - 1]}… You can keep playing: the explanation follows the board.
                 </div>
               )
             ) : current ? (
@@ -364,9 +386,7 @@ export function ReviewPage({ gameId, initialPly }: { gameId: number; initialPly?
                 userColor={userColor}
                 onShowLine={showLine}
                 drillHref={drills.has(current.ply) ? `#/drills/${drills.get(current.ply)}` : undefined}
-                onTryAnother={() =>
-                  setView({ kind: "explore", basePly: current.ply - 1, moves: [], sans: [], result: null, loading: false, error: null })
-                }
+                onTryAnother={() => setView({ kind: "explore", exploration: exploreGame(fens, gameUci, current.ply - 1) })}
               />
             ) : (
               <GameSummary review={review} onSelect={goto} />
