@@ -328,6 +328,37 @@ main.page {
 }
 .mode-banner .grow {
   flex: 1;
+  min-width: 0;
+}
+.board-hint {
+  margin-top: 2px;
+  text-align: center;
+}
+.line-moves {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  margin: 2px 0 0 -4px; /* the moves' own padding lines their text up with the title */
+}
+.line-moves button {
+  padding: 1px 4px;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  font: inherit;
+  color: inherit;
+  font-variant-numeric: tabular-nums;
+}
+.line-moves button:hover:not(:disabled) {
+  background: var(--accent-wash);
+}
+.line-moves button.ahead {
+  color: var(--muted);
+}
+.line-moves button.current,
+.line-moves button.current:hover:not(:disabled) {
+  background: var(--accent);
+  color: var(--accent-ink);
 }
 
 .evalbar {

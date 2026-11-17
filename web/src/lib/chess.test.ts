@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { destsOf, gamePliesAlong, numberLine, play, positionsAlong, turnOf, uciFromDrag } from "./chess";
+import { destsOf, gamePliesAlong, numberedMoves, numberLine, play, positionsAlong, turnOf, uciFromDrag } from "./chess";
 
 const START = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 const CASTLE = "r3k2r/pppppppp/8/8/8/8/PPPPPPPP/R3K2R w KQkq - 0 1";
@@ -31,6 +31,7 @@ describe("chess helpers", () => {
     expect(numberLine(START, ["e4", "e5", "Nf3"])).toBe("1. e4 e5 2. Nf3");
     const afterE4 = play(START, "e2e4").fen;
     expect(numberLine(afterE4, ["e5", "Nf3"])).toBe("1...e5 2. Nf3");
+    expect(numberedMoves(afterE4, ["e5", "Nf3", "Nc6"])).toEqual(["1...e5", "2. Nf3", "Nc6"]);
   });
 
   it("walks positions along a line", () => {

@@ -35,7 +35,9 @@ uv run chess-analysis serve      # web app on http://127.0.0.1:8000
 1. **Settings:** enter your chess.com and/or lichess username so your side is recognised.
 2. **Games:** import your recent games (or paste a PGN), then review them. Progress is shown live.
 3. **Review:** step through the game. Each move shows what went wrong, what was better (with a line you
-   can play through on the board) and the lesson. Drag any piece to ask "why not this move?".
+   can play through on the board) and the lesson. Drag any piece to try your own line, even from a
+   line you're being shown: each move is explained as you go, the board never waits for the engine,
+   and the arrow keys or the buttons under the board step back and forward.
 4. **Learn mode** (on by default): on your mistakes the answer is hidden until you've tried, with
    hints that get more specific.
 5. **Drills:** every mistake, miss and blunder of yours becomes a puzzle, repeated after 1, 3, 7, 14

@@ -68,19 +68,22 @@ export function gamePliesAlong(startFen: string, uci: string[], gameFens: string
   return plies;
 }
 
-/** "14. Bd3 Qxb2 15. Rb1" from a start position and SAN moves. */
-export function numberLine(fen: string, sans: string[]): string {
+/** ["14. Bd3", "Qxb2", "15. Rb1"] from a start position and SAN moves. */
+export function numberedMoves(fen: string, sans: string[]): string[] {
   const setup = parseFen(fen).unwrap();
   let number = setup.fullmoves;
   let white = setup.turn === "white";
-  return sans
-    .map((san, i) => {
-      const text = white ? `${number}. ${san}` : i === 0 ? `${number}...${san}` : san;
-      if (!white) number += 1;
-      white = !white;
-      return text;
-    })
-    .join(" ");
+  return sans.map((san, i) => {
+    const text = white ? `${number}. ${san}` : i === 0 ? `${number}...${san}` : san;
+    if (!white) number += 1;
+    white = !white;
+    return text;
+  });
+}
+
+/** "14. Bd3 Qxb2 15. Rb1" from a start position and SAN moves. */
+export function numberLine(fen: string, sans: string[]): string {
+  return numberedMoves(fen, sans).join(" ");
 }
 
 export function moveLabel(moveNumber: number, color: Side, san: string): string {
